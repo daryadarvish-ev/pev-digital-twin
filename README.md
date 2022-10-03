@@ -1,2 +1,13 @@
 # PEV_digital_twin
- Digital twin simulator for optimizer EV charging
+This repository is a digital twin simulator for optimizer EV charging. This work is based on https://github.com/ritwik-j/PEV_digital_twin  
+
+
+# Getting Started
+
+
+
+
+# Contributing
+
+
+
