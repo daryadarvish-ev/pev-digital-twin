@@ -90,14 +90,14 @@ class Problem:
 
 class Optimization:
 
-    def __init__(self, par, prb):
+    def __init__(self, par, prb, station):
         self.Parameters = par
         self.Problem = prb
         self.opt_z = None
         self.opt_tariff_asap = None
         self.opt_tariff_flex = None
         self.opt_tariff_overstay = None
-        self.station = dict()
+        self.station = station # "station" should be a dictionary
 
     def argmin_v(self, u, z):
 
@@ -111,8 +111,6 @@ class Optimization:
   
         ### Read parameters 
 
-
-
         N_flex = self.Problem.N_flex
         N_asap = self.Problem.N_asap
         N_asap_remainder  = self.Problem.N_asap_remainder 
@@ -124,9 +122,6 @@ class Optimization:
         soft_v_eta = self.Parameters.soft_v_eta
         delta_t = self.Parameters.Ts
 
-
-
-
         ### Decision Variables
         v = cp.Variable(shape = (3), pos = True)
 
@@ -135,14 +130,11 @@ class Optimization:
         # reg_flex =  cp.norm(u,2) * lam_x + cp.norm(z[0],2) * lam_z_c 
         
         f_flex = u.T @ (TOU - z[0]) * delta_t
-            
 
         J_1 =  v[0] * (f_flex)
-        
         # ASAP Charging
-        # reg_asap =  cp.norm(z[1],2) * lam_z_uc 
+        # reg_asap =  cp.norm(z[1],2) * lam_z_uc
 
-        # We
         if N_asap_remainder > 0:
             if N_asap <= 1:
                 f_asap = ((station_pow_max * N_asap_remainder) * (TOU[N_asap - 1] - z[1])) * delta_t 
@@ -155,13 +147,12 @@ class Optimization:
         else: 
             f_asap = cp.sum(station_pow_max * (TOU[:N_asap ] - z[1])) * delta_t 
 
-
         J_2 =  v[1] * (f_asap )
         
         # Leave
         # J_3 = v[2] * cp.sum(TOU[:N_asap] * station_pow_max) * delta_t
         J_3 = 0
-        J =    J_1 + J_2 + J_3 
+        J = J_1 + J_2 + J_3
 
         ### Log sum function conjugate: negative entropy 
         # lse_conj = - cp.sum(cp.entr(v))
@@ -224,57 +215,57 @@ class Optimization:
         ### Decision Variables
         
         z = cp.Variable(shape = (4), pos = True)
+        def constr_J(z):
+            N_flex = self.Problem.N_flex
+            N_asap = self.Problem.N_asap
+            TOU = self.Problem.TOU
+            station_pow_max = self.Problem.power_rate
 
-        f_flex = u.T @ (TOU - z[0]) * delta_t
-        # g_flex = lam_h_c * cp.inv_pos(z[2])
+            N_max = (self.var_dim_constant - 1) / 2
+            user_keys = self.station['FLEX_list']
+            existing_flex_obj = 0
+            for i in range(1, self.existing_user_info.shape[0]): # EVs other than the new user
+                adj_constant = i * self.var_dim_constant
+                duration = self.existing_user_info[i, 2] # N_remain
+                TOU_idx = self.existing_user_info[i, 3] # TOU_index
+                user = self.station[user_keys[i]]
+                existing_flex_obj = existing_flex_obj + (cp.multiply(u[adj_constant+N_max+2: adj_constant+N_max+2+duration-1], (TOU[TOU_idx:] - user.price))) # 查这个位置
+            user_keys = self.station['ASAP_list']
+            existing_asap_obj = 0
+            for i in range(len(user_keys)):
+                user = self.station[user_keys[i]]
+                TOU_idx = (self.k - user.time.start) / self.Parameters.Ts + 1 # 结合Matlab程序查这个index
+                existing_asap_obj = existing_asap_obj + (cp.sum(cp.mean(user.asap.powers) * (user.prb.TOU[TOU_idx-1:] - user.price))) # 查这个位置, 看user具体怎么处理定义
+            asap_power_sum_profile = np.zeros(1, self.var_dim_constant)
+            it = 0 # Interpolation
+            for t in range (self.k - 1, self.k + (N_max - 1) * self.Parameters.Ts - 1): # 检查Range索引
+                for i in range(len(self.station['ASAP_list'])):
+                    opt = self.station[user_keys[i]]
+                    if self.k <= opt.time.end:
+                        asap_power_sum_profile[it] = asap_power_sum_profile[it] + np.interp(self.k, np.arange(opt.time.start, opt.time.end + self.Parameters.Ts, self.Parameters.Ts) - self.Parameters.Ts, opt.powers)
+                    it += 1
+            new_flex_obj = cp.sum(cp.multiply((u[N_max + 1: N_max + 2 + N_flex - 1], (TOU[ :N_flex] - z[0]))) + self.Parameters.lambda_z_c * pow(z[0], 2))
+            new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1])+ self.Parameters.lambda_z_c * pow(z[1], 2))
+            new_leave_obj = 0
 
-        J_1 =  v[0] * (f_flex)
-        
-        # ASAP Charging
-        N_asap_remainder  = self.Problem.N_asap_remainder 
-        # print(N_asap_remainder)
-        
-        if N_asap_remainder > 0:
-            if N_asap <= 1:
-                f_asap = ((station_pow_max * N_asap_remainder) * (TOU[N_asap - 1] - z[1])) * delta_t 
-            # print(self.Problem.N_asap)
-            # print(N_asap_remainder, N_asap_remainder.shape)
-            # print(TOU[:N_asap - 1], TOU[:N_asap - 1].shape)
-            else:
-                f_asap = (cp.sum(station_pow_max * (TOU[:N_asap - 1] - z[1])) + (station_pow_max * N_asap_remainder) * (TOU[N_asap - 1] - z[1]) )* delta_t 
+            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj) * v[0]
+            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj) * v[1]
+            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj) * v[2]
+            J = J0 + J1 + J2
+            return J
 
-        else: 
-            f_asap = cp.sum(station_pow_max * (TOU[:N_asap ] - z[1])) * delta_t 
-
-        # g_asap =  lam_h_c* cp.inv_pos(z[2])
-        
-        J_2 =  v[1] * (f_asap)
-        # Leave
-        J_3 = 0
-
-        J =    J_1 + J_2 + J_3 
-
-
-        ### Log sum function 
-        # lse = cp.log_sum_exp(THETA @ z)
-        # func = z.T @ (THETA.T @ v)
-        # J_4 = mu * (lse - func) 
+        J = constr_J(z)
         constraints = [z[3] == 1]
-        constraints += [ cp.log_sum_exp(THETA @ z) - cp.sum(cp.entr(v)) - v.T @ (THETA @ z) <= soft_v_eta ]
-        
-        ## Solve 
+        constraints += [cp.log_sum_exp(THETA @ z) - cp.sum(cp.entr(v)) - v.T @ (THETA @ z) <= soft_v_eta]
+
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-
-        prob.solve()  
-
+        prob.solve()
         # try:
         #     # print("z",np.round(z.value,5))
         #     temp = np.round(z.value,5)
         # except:
         #     print(  "z status",prob.status)
-        
-        
         return z.value
 
     def argmin_x(self, z, v):
@@ -387,17 +378,20 @@ class Optimization:
         flex_user_info = np.zeros(num_flex_user, 4)
         for i in range(num_flex_user):
             user = self.station[user_keys[i]]
-            start_time = user.time.start / self.Parameters.Ts
-            end_time = user.time.end / self.Parameters.Ts
+            start_time = user.user_time / self.Parameters.Ts
+            end_time = (user.user_time + user.user_duration) / self.Parameters.Ts
             N_remain = end_time - self.k / self.Parameters.Ts
             TOU_idx = self.k / self.Parameters.Ts - start_time + 1
-            flex_user_info(i,:) = [start_time, end_time, N_remain, TOU_idx, SOC_need, SOC_now];
-        new_user = prb.user
-        start_time = new_user.time / par.Ts
-        existing_user_info = [start_time, -1, prb.N_flex, 1, new_user.SOC_need, new_user.SOC_init; flex_user_info]
-        num_col_xk = max(existing_user_info(:, 3))
-        var_dim_constant = 2 * num_col_xk + 1;
-        xk = np.ones(var_dim_constant * (num_flex_user + 1), 1);
+            flex_user_info[i, :] = [start_time, end_time, N_remain, TOU_idx]
+        new_user = self.Problem
+        start_time = new_user.user_time / self.Parameters.Ts
+        existing_user_info = [start_time, -1, new_user.N_flex, 1]
+        existing_user_info = np.concatenate((existing_user_info, flex_user_info), axis = 0)
+        self.existing_user_info = existing_user_info
+        num_col_xk = max(existing_user_info[:, 2])
+        var_dim_constant = 2 * num_col_xk + 1
+        self.var_dim.constant = var_dim_constant
+        uk = np.ones(var_dim_constant * (num_flex_user + 1), 1)
         
         def J_func(z, u, v):
             ### Read parameters 
@@ -412,7 +406,7 @@ class Optimization:
             f_flex = u.T @ (TOU - z[0]) * delta_t
             # g_flex = lam_h_c * 1 / z[2] 
             
-            J_1 =  v[0] * (f_flex)
+            J_1 = v[0] * (f_flex)
             
             # ASAP Charging
             # reg_asap =  z[1]**2 * lam_z_uc 
@@ -426,7 +420,7 @@ class Optimization:
     
 
             # g_asap = lam_h_uc * 1 / z[2] 
-            J_2 =  v[1] * (f_asap )
+            J_2 = v[1] * (f_asap)
             
             # Leave
             # Include the p_max 
@@ -434,7 +428,6 @@ class Optimization:
             J_3 = 0
 
             return  np.array([J_1 , J_2 , J_3])
-        
         def charging_revenue(z, u):
             
             N_asap = self.Problem.N_asap
@@ -453,9 +446,7 @@ class Optimization:
                 f_asap = (np.sum(station_pow_max * (TOU[:N_asap - 1] - z[1])) + (station_pow_max * N_asap_remainder) * (TOU[N_asap - 1] - z[1]) )* delta_t 
                 
             else: 
-                f_asap = np.sum(station_pow_max * (TOU[:N_asap ] - z[1])) * delta_t 
-                
-
+                f_asap = np.sum(station_pow_max * (TOU[:N_asap ] - z[1])) * delta_t
 
             return f_flex, f_asap
 
@@ -465,13 +456,11 @@ class Optimization:
         
         # [z_c, z_uc, y, 1];
         # xk = np.ones((2 * self.Problem.N_flex + 1, 1)) # [soc0, ..., socN, u0, ..., uNm1]; - multiple dimensions 1 +  # of FLEX
-        
         zk = self.Parameters.z0
-        uk_flex = np.zeros((self.Problem.N_flex))
-        vk = self.Parameters.v0                  # [sm_c, sm_uc, sm_y]
+        uk_flex = uk
+        vk = self.Parameters.v0
 
-        ###     THIS VALUES ARE STORED FOR DEBUGGING     ## 
-        
+        ###     THIS VALUES ARE STORED FOR DEBUGGING     ##
         Jk = np.zeros((itermax))
         rev_flex = np.zeros((itermax))
         rev_asap = np.zeros((itermax))
@@ -502,16 +491,11 @@ class Optimization:
             # print(J_func(zk, uk_flex, vk))
             count += 1
 
-        N_max = (var_dim_constant - 1) / 2;
-        zk = z
-        xk = x
-        vk = v
         for i in range(len(user_keys)):
             user = self.station[user_keys[i]]
-            end_time = user.time.end / par.Ts;
-            N_remain = end_time - k / par.Ts;
-            user.x = xk((i) * var_dim_constant + 1:(i + 1) * var_dim_constant)
-            user.SOC = xk((i) * var_dim_constant + 1:i * var_dim_constant + N_remain + 1);
+            end_time = user.time.end / self.Parameters.Ts
+            N_remain = end_time - self.k / self.Parameters.Ts
+            # user.u = uk((i) * self.var_dim_constant + 1:(i + 1) * self.var_dim_constant)
             self.station[user_keys[i]] = user
 
         print(count, improve)
