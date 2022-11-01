@@ -13,7 +13,7 @@ def wrap_labels(ax, width, break_long_words=False):
     
 def plot_choice_per_vehicle_model(df):
     # plot out top 10 vehicle brands at charging station
-    sns.histplot(df, x='choice', hue='vehicle_model', hue_order=df.vehicle_model.value_counts().iloc[:10].index, multiple='dodge')
+    sns.histplot(df, hue='vehicle_model', hue_order=df.vehicle_model.value_counts().iloc[:10].index, multiple='dodge')
     
 def plot_correlation(df):
     # plot correlation matrix of dataframe
