@@ -61,25 +61,5 @@ def compute_revenue(input_df, interval='week'):
 
 
 def compute_utility_cost(input_df, interval='week'):
-    """Compute
-
-        Distributions of Arrival & Departure
-
-        Distributions of Energy Delivered
-
-        Station-level power demand over time
-
-        Economics: Revenue, Utility Cost, etc
-
-        Choice: Split between REG and SCH
-        """
-
-
-input_df = pd.read_csv('../data/Sessions2_20221020.csv')
-input_df = compute_slack(input_df)
-daily_revenue = compute_revenue(input_df, interval='day')
-weekly_revenue = compute_revenue(input_df, interval='week')
-monthly_revnue = compute_revenue(input_df, interval='month')
-yearly_revenue = compute_revenue(input_df, interval='year')
-# utility_cost = compute_utility_cost(input_df, interval='day')
-print(input_df.head())
+    """Compute historical utility cost
+    """
