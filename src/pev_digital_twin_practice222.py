@@ -208,7 +208,7 @@ def charger_station(env, input_df, run_time):
 
       prb = Problem(par=par, event=event)
 
-      opt = Optimization(par, prb)
+      opt = Optimization(par, prb, station)
 
       res = opt.run_opt()
 
@@ -444,7 +444,7 @@ def first_process(env, input_df, run_length):
 # MAIN
 env = simpy.Environment()
 
-env.process(first_process(env, input_df, SIM_RUN_TIME)) ### input_df 가 없다
+env.process(first_process(env, input_df, SIM_RUN_TIME)) ### input_df
 print("simu_run_tim",SIM_RUN_TIME)
 print("env", env)
 env.run(SIM_RUN_TIME + 10)
