@@ -1,16 +1,13 @@
-import os
-import numpy as np
-import cvxpy as cp
-import datetime
-from scipy import interpolate
 import math
+import os
 import timeit
-from scipy.optimize import minimize
-import sys
-from datetime import datetime
-import json 
-import pandas as pd
 import warnings
+import mosek
+import gurobipy
+
+import cvxpy as cp
+import numpy as np
+
 warnings.filterwarnings("ignore")
 
 class Parameters:
@@ -37,7 +34,8 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
-        
+        self.cost_dc = 1886 # This value is arbitrary now
+
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
 
 class Problem:
@@ -126,12 +124,13 @@ class Optimization_station:
         v = cp.Variable(shape = (3), pos = True)
 
         def constr_J(v):
+            ### Read parameters(indices for the incoming user)
             N_asap = self.Problem.N_asap
             TOU = self.Problem.TOU
             station_pow_max = self.Problem.power_rate
             delta_t = self.Parameters.Ts
             N_flex = self.Problem.N_flex
-            N_max = (self.var_dim_constant - 1) / 2
+            N_max = int((self.var_dim_constant - 1) / 2)
 
             user_keys = self.station['FLEX_list']
             existing_flex_obj = 0
@@ -159,19 +158,44 @@ class Optimization_station:
                     existing_asap_obj += user.asap_powers[TOU_idx:].T @ (
                                 user.Problem.TOU[TOU_idx: user.Problem.N_asap] - user.price)
 
+            # Existing user charging profile summation
+            asap_power_sum_profile = np.zeros(self.var_dim_constant)
+            for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
+                user = self.station[user_keys[i]]
+                TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+                asap_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_asap - TOU_idx] += user.asap_powers[
+                                                                                                TOU_idx:].squeeze()
+
+            # flex_power_sum_profile = np.zeros(self.var_dim_constant)
+            # for i in range(len(self.station['FLEX_list'])): # for all ASAP users
+            #     user = self.station[user_keys[i]]
+            #     TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+            #     flex_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_flex - TOU_idx] += user.flex_powers[TOU_idx:]
+
+            flex_power_sum_profile = u.reshape(self.var_dim_constant, int(len(
+                u) / self.var_dim_constant)).T  # Row: # of user, Col: Charging Profile
+            flex_power_sum_profile = cp.sum(flex_power_sum_profile[1:, :], axis=0)
+
+            asap_new_user_profile = np.zeros(self.var_dim_constant)
+            asap_new_user_profile[int(N_max + 1): int(N_max + N_asap + 1)] = self.Problem.station_pow_max
+
             # No indices issue now
             new_flex_obj = u[int(N_max + 1): int(N_max + N_flex + 1)].T @ (
                         TOU[:N_flex] - z[0])  # The front N_flex timeslots
             new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1]))  # ** The definition of station_pow_max
             new_leave_obj = 0
 
-            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj) * v[0]
-            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj) * v[1]
-            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj) * v[2]
+            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile.T + cp.sum(
+                    u.reshape(self.var_dim_constant, int(len(u) / self.var_dim_constant)).T, axis=0))) * v[0]
+            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile + flex_power_sum_profile + asap_new_user_profile)) * v[1]
+            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile + flex_power_sum_profile)) * v[2]
 
             J = J0 + J1 + J2
 
-            return J
+            return J.value
 
         J = constr_J(v)
         ### Log sum function conjugate: negative entropy 
@@ -189,7 +213,7 @@ class Optimization_station:
         ## Solve 
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve()  
+        prob.solve()
 
         # try:
         #     # print(  "v",v.value)
@@ -230,12 +254,13 @@ class Optimization_station:
         
         z = cp.Variable(shape = (4), pos = True)
         def constr_J(z):
+            ### Read parameters(indices for the incoming user)
             N_asap = self.Problem.N_asap
             TOU = self.Problem.TOU
             station_pow_max = self.Problem.power_rate
             delta_t = self.Parameters.Ts
             N_flex = self.Problem.N_flex
-            N_max = (self.var_dim_constant - 1) / 2
+            N_max = int((self.var_dim_constant - 1) / 2)
 
             user_keys = self.station['FLEX_list']
             existing_flex_obj = 0
@@ -263,19 +288,44 @@ class Optimization_station:
                     existing_asap_obj += user.asap_powers[TOU_idx:].T @ (
                                 user.Problem.TOU[TOU_idx: user.Problem.N_asap] - user.price)
 
+            # Existing user charging profile summation
+            asap_power_sum_profile = np.zeros(self.var_dim_constant)
+            for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
+                user = self.station[user_keys[i]]
+                TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+                asap_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_asap - TOU_idx] += user.asap_powers[
+                                                                                                TOU_idx:].squeeze()
+
+            # flex_power_sum_profile = np.zeros(self.var_dim_constant)
+            # for i in range(len(self.station['FLEX_list'])): # for all ASAP users
+            #     user = self.station[user_keys[i]]
+            #     TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+            #     flex_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_flex - TOU_idx] += user.flex_powers[TOU_idx:]
+
+            flex_power_sum_profile = u.reshape(self.var_dim_constant, int(len(
+                u) / self.var_dim_constant)).T  # Row: # of user, Col: Charging Profile
+            flex_power_sum_profile = cp.sum(flex_power_sum_profile[1:, :], axis=0)
+
+            asap_new_user_profile = np.zeros(self.var_dim_constant)
+            asap_new_user_profile[int(N_max + 1): int(N_max + N_asap + 1)] = self.Problem.station_pow_max
+
             # No indices issue now
             new_flex_obj = u[int(N_max + 1): int(N_max + N_flex + 1)].T @ (
                         TOU[:N_flex] - z[0])  # The front N_flex timeslots
             new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1]))  # ** The definition of station_pow_max
             new_leave_obj = 0
 
-            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj) * v[0]
-            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj) * v[1]
-            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj) * v[2]
+            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile.T + cp.sum(
+                    u.reshape(self.var_dim_constant, int(len(u) / self.var_dim_constant)).T, axis=0))) * v[0]
+            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile + flex_power_sum_profile + asap_new_user_profile)) * v[1]
+            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile + flex_power_sum_profile)) * v[2]
 
             J = J0 + J1 + J2
 
-            return J
+            return J.value
 
         J = constr_J(z)
 
@@ -373,19 +423,43 @@ class Optimization_station:
                     existing_asap_obj += user.asap_powers[TOU_idx:].T @ (
                                 user.Problem.TOU[TOU_idx: user.Problem.N_asap] - user.price)
 
+            # Existing user charging profile summation
+            asap_power_sum_profile = np.zeros(self.var_dim_constant)
+            for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
+                user = self.station[user_keys[i]]
+                TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+                asap_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_asap - TOU_idx] += user.asap_powers[
+                                                                                                TOU_idx:].squeeze()
+
+            # flex_power_sum_profile = np.zeros(self.var_dim_constant)
+            # for i in range(len(self.station['FLEX_list'])): # for all ASAP users
+            #     user = self.station[user_keys[i]]
+            #     TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+            #     flex_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_flex - TOU_idx] += user.flex_powers[TOU_idx:]
+
+            flex_power_sum_profile = cp.reshape(u, (self.var_dim_constant, int(u.shape[0] / self.var_dim_constant))).T  # Row: # of user, Col: Charging Profile
+            flex_power_sum_profile = cp.sum(flex_power_sum_profile[1:, :], axis=0)
+
+            asap_new_user_profile = np.zeros(self.var_dim_constant)
+            asap_new_user_profile[int(N_max + 1): int(N_max + N_asap + 1)] = self.Problem.station_pow_max
+
             # No indices issue now
             new_flex_obj = u[int(N_max + 1): int(N_max + N_flex + 1)].T @ (
                         TOU[:N_flex] - z[0])  # The front N_flex timeslots
             new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1]))  # ** The definition of station_pow_max
             new_leave_obj = 0
 
-            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj) * v[0]
-            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj) * v[1]
-            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj) * v[2]
+            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile.T + cp.sum(
+                    cp.reshape(u, (self.var_dim_constant, int(u.shape[0] / self.var_dim_constant))).T, axis=0))) * v[0]
+            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile + flex_power_sum_profile + asap_new_user_profile)) * v[1]
+            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(
+                asap_power_sum_profile + flex_power_sum_profile)) * v[2]
 
             J = J0 + J1 + J2
 
-            return J
+            return J.value
 
         J = constr_J(u)
 
@@ -482,7 +556,7 @@ class Optimization_station:
             station_pow_max = self.Problem.power_rate
             delta_t = self.Parameters.Ts
             N_flex = self.Problem.N_flex
-            N_max = (self.var_dim_constant - 1) / 2
+            N_max = int((self.var_dim_constant - 1) / 2)
  
             user_keys = self.station['FLEX_list']
             existing_flex_obj = 0
@@ -504,16 +578,35 @@ class Optimization_station:
                     # existing_asap_obj += cp.sum(cp.multiply(user.asap_powers * (user.Problem.TOU[TOU_idx:user.Problem.N_asap] - user.price)))
                     existing_asap_obj += user.asap_powers[TOU_idx:].T @ (user.Problem.TOU[TOU_idx: user.Problem.N_asap] - user.price)
 
+            # Existing user charging profile summation
+            asap_power_sum_profile = np.zeros(self.var_dim_constant)
+            for i in range(len(self.station['ASAP_list'])): # for all ASAP users
+                user = self.station[user_keys[i]]
+                TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+                asap_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
+
+            # flex_power_sum_profile = np.zeros(self.var_dim_constant)
+            # for i in range(len(self.station['FLEX_list'])): # for all ASAP users
+            #     user = self.station[user_keys[i]]
+            #     TOU_idx = int(self.k / delta_t - user.Problem.user_time)
+            #     flex_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_flex - TOU_idx] += user.flex_powers[TOU_idx:]
+
+            flex_power_sum_profile = u.reshape(self.var_dim_constant, int(len(u)/self.var_dim_constant)).T # Row: # of user, Col: Charging Profile
+            flex_power_sum_profile = cp.sum(flex_power_sum_profile[1:, :], axis = 0)
+
+            asap_new_user_profile = np.zeros(self.var_dim_constant)
+            asap_new_user_profile[int(N_max + 1): int(N_max + N_asap + 1)] = self.Problem.station_pow_max
+
             # No indices issue now
             new_flex_obj = u[int(N_max + 1): int(N_max + N_flex + 1)].T @ (TOU[:N_flex] - z[0])# The front N_flex timeslots
             new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1])) # ** The definition of station_pow_max
             new_leave_obj = 0
 
-            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj) * v[0]
-            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj) * v[1]
-            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj) * v[2]
+            J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(asap_power_sum_profile.T + cp.sum(u.reshape(self.var_dim_constant, int(len(u)/self.var_dim_constant)).T, axis=0))) * v[0]
+            J1 = (new_asap_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(asap_power_sum_profile + flex_power_sum_profile + asap_new_user_profile)) * v[1]
+            J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(asap_power_sum_profile + flex_power_sum_profile)) * v[2]
 
-            return np.array([J0, J1.value, J2])
+            return np.array([J0.value, J1.value, J2.value])
         def charging_revenue(z, u):
             
             N_asap = self.Problem.N_asap
@@ -606,6 +699,7 @@ class Optimization_station:
         N_remain = self.Problem.user_duration
         opt["flex_powers"] = uk[int(N_max + 1): int(N_max + 1 + N_remain)]
         self.Problem.powers = uk[int(N_max + 1): int(N_max + 1 + N_remain)]
+
         # For a possible "NEW" "ASAP" user, we assume that it's at the maximum for all ASAP intervals
         asap_powers = np.ones((self.Problem.N_asap, 1)) * self.Problem.station_pow_max
         if self.Problem.N_asap_remainder != 0: # For the last time slot, ASAP may not occupy the whole slot.
@@ -613,15 +707,17 @@ class Optimization_station:
         opt["asap_powers"] = asap_powers
         self.asap_powers = asap_powers
 
+        self.flex_poewrs = opt["flex_powers"]
+
         opt["v"] = vk
         opt["prob_flex"] = vk[0]
         opt["prob_asap"] = vk[1]
         opt["prob_leave"] = vk[2]
 
         opt["J"] = Jk[:count]
-        opt["J_sub"] = J_sub[:,:count]
-        opt["z_iter"] = z_iter[:,:count]
-        opt["v_iter"] = v_iter[:,:count]
+        opt["J_sub"] = J_sub[:, :count]
+        opt["z_iter"] = z_iter[:, :count]
+        opt["v_iter"] = v_iter[:, :count]
         opt["rev_flex"] =rev_flex[:count]
         opt["rev_asap"] = rev_asap[:count]
 
