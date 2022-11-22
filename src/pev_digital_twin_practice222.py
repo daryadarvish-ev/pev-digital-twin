@@ -75,10 +75,11 @@ global occupied_pole_num
 global occupied_temp
 global arrival_day
 
-global station
+global station_in
 global temp_ASAP
 global temp_Scheduled
-station = dict()
+global temp_leave
+station_in = dict()
 
 e_NEED = []
 
@@ -109,6 +110,7 @@ arrival_day =[]
 temp_ASAP = []
 temp_Scheduled =[]
 temp_leave = []
+temp_price = []
 models = ['Prius Prime','Model 3','Bolt EV', 'Kona','Model X 100 Dual','Clarity','Volt (second generation)','B-Class Electric Drive','Model S 100 Dual','Mustang Mach-E','Model S 90 Dual','Bolt EUV 2LT']
 
 def charger_station(env, input_df, run_time):
@@ -125,9 +127,11 @@ def charger_station(env, input_df, run_time):
     num_leave_imm = 0
     num_leave_occ = 0
 ################################ building station dictionary ####
-    # station = {}
-    # station['FLEX_list'] = list()
-    # station['ASAP_list'] = list()
+    station = {}
+    station['FLEX_list'] = list()
+    station['ASAP_list'] = list()
+    station['Leave'] = list( )
+    station['Day'] = list()
 ###############################
     # Time until first user arrives:
     yield env.timeout(input_df['arrivalMinGlobal'][0])
@@ -162,9 +166,9 @@ def charger_station(env, input_df, run_time):
         # generate stay duration
         stay_duration = input_df['durationHour'][user - 1] * 60
 
-        # print('curr_time = ', int(env.now))
-        # print('departure_time = ', int(env.now) + int(stay_duration))
-        # print('requested_energy = ', desired_energy)
+        print('curr_time = ', int(env.now))
+        print('departure_time = ', int(env.now) + int(stay_duration))
+        print('requested_energy = ', desired_energy)
 
         ######################### Price getting ################
 
@@ -204,23 +208,23 @@ def charger_station(env, input_df, run_time):
         }
 
         print('Currently user %d is using' %(user))
-
-        prb = Problem(par=par, event=event)
-
-        opt = Optimization_charger(par, prb)
-
-        res = opt.run_opt()
-
         ##################################################
-        # if not station['FLEX_list'] and not station['ASAP_list']:
-        #     opt = Optimization_charger(par, prb)
-        #     res = opt.run_opt()
-        # else:
-        #     opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
-        #     station, res = opt.run_opt()
+        prb = Problem(par=par, event=event)
+        ######################################################
+        # opt = Optimization_charger(par, prb)
         #
-        # station["EV" + str(user)] = opt
-        ################### RES GLOBAL #############
+        # res = opt.run_opt()
+
+        #######################################################################
+        if not station['FLEX_list'] and not station['ASAP_list']:
+            opt = Optimization_charger(par, prb)
+            res = opt.run_opt()
+        else:
+            opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
+            station, res = opt.run_opt()
+
+        station["EV" + str(user)] = opt
+        ################### RES GLOBAL ########################################
 
         e_NEED.append(res['e_need'])
         z_flex.append(res['z'][0])
@@ -228,7 +232,7 @@ def charger_station(env, input_df, run_time):
         z_leave.append(res['z'][2])
         flex_tarrif.append(res['tariff_flex'])
         asap_tarrif.append(res['tariff_asap'])
-        leave_tarrif.append(res['tariff_overstay'])
+        # leave_tarrif.append(res['tariff_overstay'])  ## Erased in the station_df too. if you want to add later, you have to add in the station_df too.
         v_flex.append(res['v'][0])
         v_asap.append(res['v'][1])
         v_leave.append(res['v'][2])
@@ -244,29 +248,45 @@ def charger_station(env, input_df, run_time):
         choice = choice_function(asap_price, flex_price)
 
         # If the choice is ASAP then, we change the duration
-        if (choice == 1):
-            input_df['departureMinGlobal'][user-1] = int(math.ceil((input_df['arrivalMinGlobal'][user-1] + (input_df['cumEnergy_kWh'][user-1]/event['station_pow_max'])*60)/15)*15)
-            event['departureMinGlobal'] = int(math.ceil((input_df['arrivalMinGlobal'][user - 1] + (input_df['cumEnergy_kWh'][user - 1] / event['station_pow_max']) * 60) / 15) * 15)
-            # print('this is departureMin global', input_df['departureMinGlobal'][user-1])
-        # if the choice is leave, THen remove the duration
-        if (choice == 3):
-            input_df['departureMinGlobal'][user - 1] = input_df['arrivalMinGlobal'][user-1]
-            event['departureMinGlobal'] = input_df['arrivalMinGlobal'][user - 1]
-
+        #################################################THIS is when ASAP user departs right after charging is over ########################
+        # if (choice == 1):
+        #     input_df['departureMinGlobal'][user-1] = int(math.ceil((input_df['arrivalMinGlobal'][user-1] + (input_df['cumEnergy_kWh'][user-1]/event['station_pow_max'])*60)/15)*15)
+        #     event['departureMinGlobal'] = int(math.ceil((input_df['arrivalMinGlobal'][user - 1] + (input_df['cumEnergy_kWh'][user - 1] / event['station_pow_max']) * 60) / 15) * 15)
+        #     # print('this is departureMin global', input_df['departureMinGlobal'][user-1])
+        # # if the choice is leave, THen remove the duration
+        # if (choice == 3):
+        #     input_df['departureMinGlobal'][user - 1] = input_df['arrivalMinGlobal'][user-1]
+        #     event['departureMinGlobal'] = input_df['arrivalMinGlobal'][user - 1]
+        ##############################################################################################################
         # Check the pole to build pole occupancy data
         # check_pole(event['arrivalMinGlobal'], input_df['departureMinGlobal'][user-1])
         # print(event['arrivalMinGlobal'], event['departureMinGlobal'])
         check_pole(event['arrivalMinGlobal'], event['departureMinGlobal'])
 
         global station_df
-        station_df = pd.DataFrame(list(zip(arrival_day,e_NEED,z_flex,z_asap,z_leave,flex_tarrif,asap_tarrif,leave_tarrif,v_flex,v_asap,v_leave,prob_flex,prob_asap,prob_leave,car_type,occupied_pole_num,Choice)),
-                                  columns=['arrival_day','e_need', 'z_flex', 'z_asap', 'z_leave', 'flex_tarrif', 'asap_tarrif', 'leave_tarrif', 'v_flex','v_asap', 'v_leave', 'prob_flex', 'prob_asap', 'prob_leave','car_type','occupied_pole_num','Choice'])
+        station_df = pd.DataFrame(list(zip(arrival_day,e_NEED,z_flex,z_asap,z_leave,flex_tarrif,asap_tarrif,v_flex,v_asap,v_leave,prob_flex,prob_asap,prob_leave,car_type,occupied_pole_num,Choice)),
+                                  columns=['arrival_day','e_need', 'z_flex', 'z_asap', 'z_leave', 'flex_tarrif', 'asap_tarrif', 'v_flex','v_asap', 'v_leave', 'prob_flex', 'prob_asap', 'prob_leave','car_type','occupied_pole_num','Choice'])
 
         ############### Daily user Flex & Scheduled List
-        ASAP_Schedule_list(user)
+        ASAP_Schedule_list(user, station, opt, asap_price, flex_price)
         print('the current stat of station', station)
 
-        #################
+
+        # for user in station_in['FLEX_list']:
+        #     station["FLEX_list"].append("EV"+ str(user))
+        #     station["EV" + str(user)].price = asap_price
+        # for user in station_in['ASAP_list']:
+        #     station["FLEX_list"].append("EV"+ str(user))
+        #     station["EV" + str(user)].price = asap_price
+        # for user in station_in['Leave']:
+        #     station["FLEX_list"].append("EV"+ str(user))
+        #     station["EV" + str(user)].price = asap_price
+
+        # station["Day"].append(station_in['Day'])
+        ################
+
+        print('the current stat of station', station)
+        # print('the current state of station_in', station_in)
 
         # if choice == 1:
         #     station["ASAP_list"].append("EV" + str(user))
@@ -327,6 +347,18 @@ def charger_station(env, input_df, run_time):
 
     return[session]
 
+    # MAIN
+    env = simpy.Environment()
+
+    env.process(first_process(env, input_df, SIM_RUN_TIME)) ### input_df
+    print("simu_run_tim",SIM_RUN_TIME)
+    print("env", env)
+    env.run(SIM_RUN_TIME + 10)
+    # intervals = range(SIM_RUN_TIME)
+    # intervals = intervals[::15]
+    # print(intervals)
+
+
 def choice_function(asap_price, flex_price):
     # choose lower price
     if random.uniform(0, 1) > 0.9:
@@ -382,7 +414,7 @@ def check_pole(arrivalMinGlobal, departureMinGlobal):
         print ("Every Poles are occupied at this moment")
         occupied_pole_num.append("unavailability leave")
 
-def ASAP_Schedule_list (user):
+def ASAP_Schedule_list (user , station, opt, asap_price, flex_price):
 
     total_day = 10
 
@@ -392,36 +424,61 @@ def ASAP_Schedule_list (user):
             if (user == 1):
                 day_temp = 0
             else:
-                day_temp = station_df['arrival_day'][user-2]
+                # day_temp = station_df['arrival_day'][user-2]
+                day_temp = station_df['arrival_day'][user-1]
+            # if (user % 10 == 0):
+            # if ( day_temp != day ):
+            #     temp_ASAP.clear()
+            #     temp_Scheduled.clear()
+            #     temp_leave.clear()
+            #     station.clear()
+                # station['FLEX_list'] = []
+                # station['ASAP_list']= []
+                # station['Leave'] =[]
+                # station['Day'] = []
 
-            if (day_temp != day):
+            if(station_df['Choice'][user-1] == 'Regular'):
+                temp_ASAP.append('EV' + str(user))
+                station["EV" + str(user)].price = asap_price
+                # temp_price.append(asap_price)
+            elif(station_df['Choice'][user-1] == 'Scheduled'):
+                temp_Scheduled.append('EV' + str(user))
+                station["EV" + str(user)].price = flex_price
+                # temp_price.append(flex_price)
+            elif (station_df['Choice'][user - 1] == 'Leave'):
+                temp_leave.append('EV' + str(user))
+                # station["EV" + str(user)].price  # arbitrary number for the leave price
+                # temp_price.append('700000')
+            if (user % 10 == 0):
                 temp_ASAP.clear()
                 temp_Scheduled.clear()
                 temp_leave.clear()
-
-            if(station_df['Choice'][user-1] == 'Regular'):
-                temp_ASAP.append(user)
-            elif(station_df['Choice'][user-1] == 'Scheduled'):
-                temp_Scheduled.append(user)
-            elif (station_df['Choice'][user - 1] == 'Leave'):
-                temp_leave.append(user)
-
+                station.clear()
 
             station['FLEX_list'] = temp_ASAP
             station['ASAP_list'] = temp_Scheduled
             station['Leave'] = temp_leave
-            station['Day'] = day
+            station['Day'] = day_temp
+
+            # station['Price'] = temp_price
+            # if ( user == 10 ):
+            #     temp_ASAP.clear()
+            #     temp_Scheduled.clear()
+            #     temp_leave.clear()
+            #     station.clear()
 
     return(station)
 
-
+# station["EV" + str(user)] = opt
+# station["ASAP_list"].append("EV" + str(user))
+# station["EV" + str(user)].price = asap_price
 
 
 
 def first_process(env, input_df, run_length):
     yield env.process(charger_station(env, input_df, run_length))
 
-# MAIN
+# # MAIN
 env = simpy.Environment()
 
 env.process(first_process(env, input_df, SIM_RUN_TIME)) ### input_df
