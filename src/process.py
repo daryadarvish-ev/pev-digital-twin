@@ -59,17 +59,17 @@ def compute_utility_cost(input_df):
     TOU_9AM_2PM = 14.9
 
     def get_utility_cost(row):
-        unpacked_power_list = unpack_power(row['power'])
+        unpacked_power_df = unpack_power(row['power'])
 
         total_utility_cost = 0
 
-        for power_kw, timestamp in unpacked_power_list:
-            if 16 < timestamp.hour < 21:
-                total_utility_cost += TOU_OFF_PEAK * power_kw * 5 / 60  # multiply by # hours
-            elif 9 < timestamp.hour < 14:
-                total_utility_cost += TOU_4PM_9PM * power_kw * 5 / 60
+        for index, row in unpacked_power_df.iterrows():
+            if 16 < row['timestamp'].hour < 21:
+                total_utility_cost += TOU_OFF_PEAK * row['power_kw'] * 5 / 60  # multiply by # hours
+            elif 9 < row['timestamp'].hour < 14:
+                total_utility_cost += TOU_4PM_9PM * row['power_kw'] * 5 / 60
             else:
-                total_utility_cost += TOU_9AM_2PM * power_kw * 5 / 60
+                total_utility_cost += TOU_9AM_2PM * row['power_kw'] * 5 / 60
         return total_utility_cost/100
 
     input_df['utility_cost'] = input_df.apply(lambda row: get_utility_cost(row), axis=1)
@@ -86,22 +86,24 @@ def unpack_power(power_row):
 
     Returns
     -------
-    unpacked_power_list : list
-        list of power in kW and timestamp
+    unpacked_power_list : pandas dataframe
+        dataframe of timestamp and power in kW
 
     """
 
-    power_list = power_row.strip('][').split(', ')
-    unpacked_power_list = []
+    power_str_list = power_row.strip('][').split(', ')
+    timestamp_list = []
+    power_list = []
 
-    for i in range(0, len(power_list) // 2):
+    for i in range(0, len(power_str_list) // 2):
         try:
-            power_kw = int(power_list[2 * i][21:25]) / 1000
+            power_kw = int(power_str_list[2 * i][21:25]) / 1000
         except:
             continue
-        timestamp = datetime.fromtimestamp(int(power_list[2 * i + 1][22:32]))
-        unpacked_power_list.append((power_kw, timestamp))
-    return unpacked_power_list
+        timestamp = datetime.fromtimestamp(int(power_str_list[2 * i + 1][22:32]))
+        timestamp_list.append(timestamp)
+        power_list.append(power_kw)
+    return pd.DataFrame(data={'timestamp': timestamp_list, 'power_kw': power_list})
 
 
 def compute_net_income_per_session(input_df):
@@ -190,5 +192,3 @@ def compute_net_income(input_df, interval='week'):
     else:
         raise InvervalError
     return net_revenue_df
-
-
