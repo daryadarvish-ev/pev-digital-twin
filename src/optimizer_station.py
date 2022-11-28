@@ -12,7 +12,9 @@ from numpy import ndarray
 warnings.filterwarnings("ignore")
 
 class Parameters:
-
+    """
+    Class to hold all parameters for all simulations which will be the same for each problem.
+    """
     def __init__(self, 
                 z0 = np.array([1,1,1,1]).reshape(4,1),
                 v0 = np.array([0.3333, 0.3333, 0.3333]).reshape(3,1) ,  
@@ -42,9 +44,10 @@ class Parameters:
 
 class Problem:
     """
+    This class encompasses the current user information which will change for every user optimization.
+
     time, int, user interval 
     duration, int, number of charging intervals
-    This class encompasses the current user information.
     """
     def __init__(self, par ,**kwargs):
         self.par = par
@@ -93,7 +96,9 @@ class Problem:
         assert self.N_asap <= self.N_flex, print("Not enought time (n_asap,n_flex)",self.N_asap,self.N_flex)
 
 class Optimization_station:
-
+    """
+    This class encompasses the main optimizer at the station level.
+    """
     def __init__(self, par, prb, station, k):
         self.Parameters = par
         self.Problem = prb
@@ -728,7 +733,9 @@ class Optimization_station:
         return station, opt
 
 class Optimization_charger:
-
+    """
+    This class encompasses the main optimizer for a single charger.
+    """
     def __init__(self, par, prb):
         self.Parameters = par
         self.Problem = prb
@@ -912,7 +919,7 @@ class Optimization_charger:
 
         return z.value
 
-    def argmin_x(self, z, v):
+    def argmin_u(self, z, v):
         """
         Function to minimize charging cost. Flexible charging with variable power schedule
         Inputs:
@@ -1103,7 +1110,7 @@ class Optimization_charger:
             z_iter[:, count] = zk.reshape((4,))
             v_iter[:, count] = vk.reshape((3,))
 
-            uk_flex, e_deliveredk_flex = self.argmin_x(zk, vk)
+            uk_flex, e_deliveredk_flex = self.argmin_u(zk, vk)
 
             vk = self.argmin_v(uk_flex, zk)
             zk = self.argmin_z(uk_flex, vk)
