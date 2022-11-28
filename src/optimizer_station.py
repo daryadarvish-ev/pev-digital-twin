@@ -2,8 +2,6 @@ import math
 import os
 import timeit
 import warnings
-import mosek
-import gurobipy
 
 import cvxpy as cp
 import numpy as np
@@ -35,7 +33,7 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
-        self.cost_dc = 300 # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = 18.8 # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
         # 18.8 --> 300 We can change this value to show the effect of station-level impact.
 
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
@@ -580,9 +578,10 @@ class Optimization_station:
             #     user = self.station[user_keys[i]]
             #     TOU_idx = int(self.k / delta_t - user.Problem.user_time)
             #     flex_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_flex - TOU_idx] += user.flex_powers[TOU_idx:]
-
-            flex_power_sum_profile = u.reshape(int(len(u)/self.var_dim_constant), self.var_dim_constant) # Row: # of user, Col: Charging Profile
-            flex_power_sum_profile = cp.sum(flex_power_sum_profile[1:, :], axis = 0)
+            flex_power_sum_profile = np.zeros(self.var_dim_constant)
+            if self.station["FLEX_list"]:
+                flex_power_sum_profile = u.reshape(int(len(u)/self.var_dim_constant), self.var_dim_constant) # Row: # of user, Col: Charging Profile
+                flex_power_sum_profile = cp.sum(flex_power_sum_profile[1:, :], axis = 0)
 
             asap_new_user_profile = np.zeros(self.var_dim_constant)
             asap_new_user_profile[int(N_max + 1): int(N_max + N_asap + 1)] = self.Problem.station_pow_max
@@ -637,7 +636,6 @@ class Optimization_station:
         z_iter = np.zeros((4,itermax))
         v_iter = np.zeros((3,itermax))
         J_sub = np.zeros((3,itermax))
-
 
         # Convergence criterion:
         while (count < itermax) & (improve >= 0) & (abs(improve) >= 0.00001):
@@ -702,6 +700,19 @@ class Optimization_station:
         self.asap_powers = asap_powers
 
         self.flex_poewrs = opt["flex_powers"]
+        flex_power_sum_profile = uk_flex.reshape(int(len(uk_flex) / self.var_dim_constant), self.var_dim_constant)  # Row: # of user, Col: Charging Profile
+        flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
+
+        asap_power_sum_profile = np.zeros(self.var_dim_constant)
+        for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
+            user = self.station[user_keys[i]]
+            TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
+            asap_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_asap - TOU_idx] += user.asap_powers[
+                                                                                            TOU_idx:].squeeze()
+        power_sum = flex_power_sum_profile + asap_power_sum_profile
+
+        opt["power_sum"] = power_sum[int(N_max) + 1:].reshape(-1, 1)
+        opt["power_sum_N"] = N_max
 
         opt["v"] = vk
         opt["prob_flex"] = vk[0]
@@ -712,7 +723,7 @@ class Optimization_station:
         opt["J_sub"] = J_sub[:, :count]
         opt["z_iter"] = z_iter[:, :count]
         opt["v_iter"] = v_iter[:, :count]
-        opt["rev_flex"] =rev_flex[:count]
+        opt["rev_flex"] = rev_flex[:count]
         opt["rev_asap"] = rev_asap[:count]
 
         opt["num_iter"] = count
@@ -1145,6 +1156,7 @@ class Optimization_charger:
         opt["v_iter"] = v_iter[:, :count]
         opt["rev_flex"] = rev_flex[:count]
         opt["rev_asap"] = rev_asap[:count]
+        opt["power_sum"] = uk_flex.reshape(-1, 1)
 
         opt["num_iter"] = count
         opt["prb"] = self.Problem

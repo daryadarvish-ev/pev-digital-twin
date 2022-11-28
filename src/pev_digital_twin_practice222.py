@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 # from google.colab import drive
 import seaborn as sns
 import simpy
+import numpy as np
 from matplotlib.pyplot import figure
 
 from optimizer_station import *
@@ -95,6 +96,8 @@ j_asap = []
 j_leave = []
 Choice = []
 occupied_pole_num = []
+
+profile_one_day = np.zeros((96, 1))
 
 models = ['Prius Prime','Model 3','Bolt EV', 'Kona','Model X 100 Dual','Clarity','Volt (second generation)','B-Class Electric Drive','Model S 100 Dual','Mustang Mach-E','Model S 90 Dual','Bolt EUV 2LT']
 
@@ -199,6 +202,10 @@ def charger_station(env, input_df, run_time):
 
         prb = Problem(par=par, event=event)
 
+
+        # opt = Optimization_charger(par, prb)
+        # res = opt.run_opt()
+
         if not station['FLEX_list'] and not station['ASAP_list']:
             opt = Optimization_charger(par, prb)
             res = opt.run_opt()
@@ -240,13 +247,17 @@ def charger_station(env, input_df, run_time):
 
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
 
-        choice = choice_function(asap_price, flex_price)
-        if choice == 1:
-            station["ASAP_list"].append("EV" + str(user))
-            station["EV" + str(user)].price = asap_price
-        elif choice == 2:
-            station["FLEX_list"].append("EV" + str(user))
-            station["EV" + str(user)].price = flex_price
+        # choice = choice_function(asap_price, flex_price)
+        # if choice == 1:
+        #     station["ASAP_list"].append("EV" + str(user))
+        #     station["EV" + str(user)].price = asap_price
+        # elif choice == 2:
+        sum_power = res["power_sum"]
+        station["FLEX_list"].append("EV" + str(user))
+        station["EV" + str(user)].price = flex_price
+        curr_ind = int(arrival_hour[user - 1] * 4)
+        profile_one_day[curr_ind: curr_ind + len(sum_power)] = sum_power
+
 
         # rates output
         charge_time = 30 * round((stay_duration) / 30)
