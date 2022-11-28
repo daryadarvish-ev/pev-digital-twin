@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 # Text wrap for nicer graph output
 import textwrap
+from process import unpack_power
 
 
 def wrap_labels(ax, width, break_long_words=False):
@@ -36,3 +37,22 @@ def plot_correlation(df):
     # plot correlation matrix of dataframe
     plt.figure(figsize=(16, 10))
     sns.heatmap(df.corr(), annot=True)
+
+
+def viz_charging_profile(power_row):
+    """Plots power profile for a given charging session
+
+    Parameters
+    ----------
+    power_row :
+        row containing power data in string format
+
+    Returns
+    -------
+    ax : matplotlib axis
+        plot of the charging profile
+
+    """
+    power_df = unpack_power(power_row['power'])
+    power_plot = power_df.plot(x='timestamp', y='power_kw')
+    return power_plot
