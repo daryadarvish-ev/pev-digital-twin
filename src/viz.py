@@ -1,7 +1,5 @@
 import seaborn as sns
 import matplotlib.pyplot as plt
-
-# Text wrap for nicer graph output
 import textwrap
 from process import unpack_power
 
