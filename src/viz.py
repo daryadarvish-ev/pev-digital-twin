@@ -13,7 +13,7 @@ def wrap_labels(ax, width, break_long_words=False):
 
 
 def viz_charging_profile(power_row):
-    """Plots power profile for a given charging sessions
+    """Plots power profile for a given charging session
 
     Parameters
     ----------
