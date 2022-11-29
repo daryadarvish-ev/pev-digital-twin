@@ -1,6 +1,7 @@
 # Import libraries
 import math
 import random
+import copy
 
 import matplotlib.pyplot as plt
 # from google.colab import drive
@@ -11,6 +12,11 @@ from matplotlib.pyplot import figure
 from optimizer_station import *
 # from optimizer_tugba_practice import *
 from session_generation_practice import *
+
+from simulation_choice_function import choice_function
+
+from simulation_choice_function import Choice
+# Choice = copy.deepcopy(Choice)
 
 #from Station import *
 
@@ -71,6 +77,8 @@ global j_flex
 global j_asap
 global j_leave
 global Choice
+
+# Choice = copy.deepcopy(Choice)
 global occupied_pole_num
 global occupied_temp
 global arrival_day
@@ -102,7 +110,7 @@ prob_leave = []
 j_flex = []
 j_asap = []
 j_leave = []
-Choice = []
+# Choice = []
 occupied_pole_num = []
 occupied_temp =0
 arrival_day =[]
@@ -111,6 +119,7 @@ temp_ASAP = []
 temp_Scheduled =[]
 temp_leave = []
 temp_price = []
+choice = []
 models = ['Prius Prime','Model 3','Bolt EV', 'Kona','Model X 100 Dual','Clarity','Volt (second generation)','B-Class Electric Drive','Model S 100 Dual','Mustang Mach-E','Model S 90 Dual','Bolt EUV 2LT']
 
 def charger_station(env, input_df, run_time):
@@ -264,39 +273,15 @@ def charger_station(env, input_df, run_time):
         check_pole(event['arrivalMinGlobal'], event['departureMinGlobal'])
 
         global station_df
-        station_df = pd.DataFrame(list(zip(arrival_day,e_NEED,z_flex,z_asap,z_leave,flex_tarrif,asap_tarrif,v_flex,v_asap,v_leave,prob_flex,prob_asap,prob_leave,car_type,occupied_pole_num,Choice)),
+        station_df = pd.DataFrame(list(zip(arrival_day,e_NEED,z_flex,z_asap,z_leave,flex_tarrif,asap_tarrif,v_flex,v_asap,v_leave,prob_flex,prob_asap,prob_leave,car_type,occupied_pole_num, choice)),
                                   columns=['arrival_day','e_need', 'z_flex', 'z_asap', 'z_leave', 'flex_tarrif', 'asap_tarrif', 'v_flex','v_asap', 'v_leave', 'prob_flex', 'prob_asap', 'prob_leave','car_type','occupied_pole_num','Choice'])
 
         ############### Daily user Flex & Scheduled List
         ASAP_Schedule_list(user, station, opt, asap_price, flex_price)
         print('the current stat of station', station)
 
-
-        # for user in station_in['FLEX_list']:
-        #     station["FLEX_list"].append("EV"+ str(user))
-        #     station["EV" + str(user)].price = asap_price
-        # for user in station_in['ASAP_list']:
-        #     station["FLEX_list"].append("EV"+ str(user))
-        #     station["EV" + str(user)].price = asap_price
-        # for user in station_in['Leave']:
-        #     station["FLEX_list"].append("EV"+ str(user))
-        #     station["EV" + str(user)].price = asap_price
-
-        # station["Day"].append(station_in['Day'])
-        ################
-
         print('the current stat of station', station)
         # print('the current state of station_in', station_in)
-
-        # if choice == 1:
-        #     station["ASAP_list"].append("EV" + str(user))
-        #     station["EV" + str(user)].price = asap_price
-        # if choice == 2:
-        #     station["FLEX_list"].append("EV" + str(user))
-        #     station["EV" + str(user)].price = flex_price
-        # elif choice == 3:
-        #     station["LEAVE_list"].append("EV" + str(user))
-        #     station["EV" + str(user)].price = 60000 # arbitrary number for the leave price
 
         # rates output
         charge_time = 30 * round((stay_duration) / 30)
@@ -343,7 +328,7 @@ def charger_station(env, input_df, run_time):
 
             break
             #yield env.timeout(random.randint(30,CAR_ARR_TIME)) # random interval for next arrival
-            yield env.timeout(input_df['arrivalMinGlobal'][user] - input_df['arrivalMinGlobal'][user-1])  # index를 바꿔봐 앞에걸 user+1 뒤에걸 그냥 user
+            yield env.timeout(input_df['arrivalMinGlobal'][user] - input_df['arrivalMinGlobal'][user-1])
 
     return[session]
 
@@ -354,33 +339,7 @@ def charger_station(env, input_df, run_time):
     print("simu_run_tim",SIM_RUN_TIME)
     print("env", env)
     env.run(SIM_RUN_TIME + 10)
-    # intervals = range(SIM_RUN_TIME)
-    # intervals = intervals[::15]
-    # print(intervals)
 
-
-def choice_function(asap_price, flex_price):
-    # choose lower price
-    if random.uniform(0, 1) > 0.9:
-        choice = 3
-        Choice.append("Leave")
-        return choice
-    if asap_price > flex_price:
-        choice = 1
-        Choice.append("Regular")
-        return choice
-    else:
-        choice = 2
-        Choice.append("Scheduled")
-        return choice
-# def choice_check(choice):
-#     if choice == "Regular"
-#
-#     else:
-#         choice = 2
-#         Choice.append("Scheduled")
-#     return choice
-#
 
 # poles
 global MM, YY, poles
@@ -424,18 +383,7 @@ def ASAP_Schedule_list (user , station, opt, asap_price, flex_price):
             if (user == 1):
                 day_temp = 0
             else:
-                # day_temp = station_df['arrival_day'][user-2]
                 day_temp = station_df['arrival_day'][user-1]
-            # if (user % 10 == 0):
-            # if ( day_temp != day ):
-            #     temp_ASAP.clear()
-            #     temp_Scheduled.clear()
-            #     temp_leave.clear()
-            #     station.clear()
-                # station['FLEX_list'] = []
-                # station['ASAP_list']= []
-                # station['Leave'] =[]
-                # station['Day'] = []
 
             if(station_df['Choice'][user-1] == 'Regular'):
                 temp_ASAP.append('EV' + str(user))

@@ -7,6 +7,7 @@ from session_generator2 import *
 daily_sessions = [10]*10
 
 input_gen = InputGen(daily_sessions=daily_sessions, data_file='../data/Sessions2.csv', rnd_seeds=(4,5,30))
+# input_gen = InputGen(daily_sessions=daily_sessions, data_file='../data/ChargePointEV.csv', rnd_seeds=(4,5,30))
 # Remove outliers:
 input_gen.data = input_gen.data[(input_gen.data['DurationHrs'] < 15) & (input_gen.data['DurationHrs'] > 1/6)]
 input_gen.data = input_gen.data[input_gen.data['cumEnergy_Wh'] / input_gen.data['DurationHrs'] <= 6700]

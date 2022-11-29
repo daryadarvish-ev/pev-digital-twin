@@ -1,11 +1,20 @@
 import pandas as pd
 import numpy as np
+import time
+import datetime
 
 class InputGen:
 
     def __init__(self, daily_sessions, data_file, rnd_seeds=(100, 200, 300)):
         self.ses = daily_sessions
         self.data = pd.read_csv(data_file, parse_dates=['connectTime', 'startChargeTime', 'Deadline', 'lastUpdate'])
+        #####
+        # self.data = pd.read_csv(data_file, parse_dates=['connectTime'])
+        # for i in range(self.data.shape[0]):
+        #     element = datetime.datetime.strptime(self.data['Total Duration (hh:mm:ss)'][i], "%H:%M")
+        #     self.data['DurationHrs'] = element.hour + element.minute / 60
+        #     self.data['cumEnergy_Wh'] = self.data['Energy (kWh)'][i]*1000
+        #######
         self.df = pd.DataFrame(columns=['arrivalDay','arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
         self.rnd_seeds = rnd_seeds
 
