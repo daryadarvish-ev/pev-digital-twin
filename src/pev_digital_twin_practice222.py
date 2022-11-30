@@ -164,7 +164,7 @@ def charger_station(env, input_df, run_time):
 
         # We define the timesteps in the APP as 15 minute
         delta_t = 0.25  # hour
-        print("For delta_t: ", delta_t, "max number of intervals:", 24 / delta_t)
+        # print("For delta_t: ", delta_t, "max number of intervals:", 24 / delta_t)
         ################## Define the TOU Cost ##########################################
         ## the TOU cost is defined consid
         # ering the delta_t above, if not code raises an error.##
@@ -198,7 +198,8 @@ def charger_station(env, input_df, run_time):
         }
 
         check_pole(event['arrivalMinGlobal'], event['departureMinGlobal'])
-        print('Currently user %d is using' %(user))
+
+        print('Currently user %d is using' %(user))  # Tell me which user is optimizing before we enter opt.
 
         prb = Problem(par=par, event=event)
 

@@ -35,7 +35,7 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
-        self.cost_dc = 300  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = 100  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
         # 18.8 --> 300 We can change this value to show the effect of station-level impact.
 
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
@@ -207,7 +207,7 @@ class Optimization_station:
         ## Solve 
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve()
+        prob.solve(solver='SCS')
 
         # try:
         #     # print(  "v",v.value)
@@ -319,7 +319,7 @@ class Optimization_station:
         constraints += [z <= 40] # For better convergence guarantee.
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve()
+        prob.solve(solver='SCS')
         # try:
         #     # print("z",np.round(z.value,5))
         #     temp = np.round(z.value,5)
@@ -464,7 +464,7 @@ class Optimization_station:
         ## Solve 
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve()
+        prob.solve(solver='SCS')
         
         # try:
         #     print("u:",np.round(u.value,2 ))
@@ -487,8 +487,10 @@ class Optimization_station:
             for user_key in user_keys:
                 user = self.station[user_key].Problem
                 end_time = user.user_time + user.user_duration
+                TOU_idx = int(self.k / self.Parameters.Ts - user.user_time)
                 N_remain = int(end_time - self.k / self.Parameters.Ts) # Number of intervals left for the existing users
-                if N_remain <= 0: # If all flex intervals expire(They should depart now)
+                e_needed_now = user.e_need - np.sum(user.powers[: TOU_idx] * self.Parameters.eff * self.Parameters.Ts)
+                if N_remain <= 1e-5 or e_needed_now <= 1e-5: # If all flex intervals expire or the energy demand is met, remove the user
                     del(self.station[user_key])
                     self.station["FLEX_list"].remove(user_key)
 
@@ -651,6 +653,8 @@ class Optimization_station:
             v_iter[:, count] = vk.reshape((3,))
 
             uk_flex, e_deliveredk_flex = self.argmin_u(zk, vk)
+
+            uk = uk_flex.reshape(-1, self.var_dim_constant)
             
             vk = self.argmin_v(uk_flex, zk)
             zk = self.argmin_z(uk_flex, vk)
@@ -837,7 +841,7 @@ class Optimization_charger:
         ## Solve
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve()
+        prob.solve(solver='SCS')
 
         # try:
         #     # print(  "v",v.value)
@@ -928,7 +932,7 @@ class Optimization_charger:
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
 
-        prob.solve()
+        prob.solve(solver='SCS')
 
         # try:
         #     # print("z",np.round(z.value,5))
@@ -1030,7 +1034,7 @@ class Optimization_charger:
         ## Solve
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve()
+        prob.solve(solver='SCS')
 
         # try:
         #     print("u:",np.round(u.value,2 ))
