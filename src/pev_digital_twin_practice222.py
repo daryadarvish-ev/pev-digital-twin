@@ -203,8 +203,8 @@ def charger_station(env, input_df, run_time):
 
         prb = Problem(par=par, event=event)
 
-
-        # opt = Optimization_charger(par, prb)
+        #
+        # opt = Optimization(par, prb)
         # res = opt.run_opt()
 
         if not station['FLEX_list'] and not station['ASAP_list']:
@@ -248,16 +248,16 @@ def charger_station(env, input_df, run_time):
 
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
 
-        # choice = choice_function(asap_price, flex_price)
-        # if choice == 1:
-        #     station["ASAP_list"].append("EV" + str(user))
-        #     station["EV" + str(user)].price = asap_price
-        # elif choice == 2:
-        sum_power = res["power_sum"]
-        station["FLEX_list"].append("EV" + str(user))
-        station["EV" + str(user)].price = flex_price
-        curr_ind = int(arrival_hour[user - 1] * 4)
-        profile_one_day[curr_ind: curr_ind + len(sum_power)] = sum_power
+        choice = choice_function(asap_price, flex_price)
+        if choice == 1:
+            station["ASAP_list"].append("EV" + str(user))
+            station["EV" + str(user)].price = asap_price
+        elif choice == 2:
+        # sum_power = res["power_sum"]
+            station["FLEX_list"].append("EV" + str(user))
+            station["EV" + str(user)].price = flex_price
+        # curr_ind = int(arrival_hour[user - 1] * 4)
+        # profile_one_day[curr_ind: curr_ind + len(sum_power)] = sum_power
 
 
         # rates output

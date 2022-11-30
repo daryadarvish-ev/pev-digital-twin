@@ -92,7 +92,7 @@ class Problem:
 #         print(self.TOU) 
         # self.TOU = interpolate.interp1d(np.arange(0, 24 - 0.25 + 0.1, 0.25), par.TOU, kind = 'nearest')(np.arange(self.user_time, 0.1 + self.user_time + self.user_duration - par.Ts, par.Ts)).T
         
-        assert self.N_asap <= self.N_flex, print("Not enought time (n_asap,n_flex)",self.N_asap, self.N_flex)
+        assert self.N_asap <= self.N_flex, print("Not enought time (n_asap,n_flex)",self.N_asap,self.N_flex)
 
 class Optimization:
 
@@ -213,14 +213,8 @@ class Optimization:
         N_asap: timesteps required when charging at full capacity
 
         """
-        #############################################  Erase this part ##############################################
-        # print("what is v", v)
         if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
-            # print("what is v", v)
-            # print("NP sum V", np.sum(v), "\n self.parameters.sfotveta", self.Parameters.soft_v_eta)
             raise ValueError('[ ERROR] invalid $v$')
-
-
         
         ### Read parameters 
         N_flex = self.Problem.N_flex

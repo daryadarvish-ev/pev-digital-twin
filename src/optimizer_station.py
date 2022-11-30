@@ -35,7 +35,7 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
-        self.cost_dc = 100  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = 0  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
         # 18.8 --> 300 We can change this value to show the effect of station-level impact.
 
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
@@ -207,7 +207,7 @@ class Optimization_station:
         ## Solve 
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve(solver='SCS')
+        prob.solve()
 
         # try:
         #     # print(  "v",v.value)
@@ -236,8 +236,8 @@ class Optimization_station:
         N_asap: timesteps required when charging at full capacity
 
         """
-        if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
-            raise ValueError('[ ERROR] invalid $v$')
+        # if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
+        #     raise ValueError('[ ERROR] invalid $v$')
         
         ### Read parameters
 #         vehicle_power_rate = self.Problem.power_rate
@@ -319,7 +319,7 @@ class Optimization_station:
         constraints += [z <= 40] # For better convergence guarantee.
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve(solver='SCS')
+        prob.solve()
         # try:
         #     # print("z",np.round(z.value,5))
         #     temp = np.round(z.value,5)
@@ -363,8 +363,8 @@ class Optimization_station:
         eff = 1
         delta_t = self.Parameters.Ts
 
-        if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
-            raise ValueError('[ ERROR] invalid $v$')
+        # if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
+        #     raise ValueError('[ ERROR] invalid $v$')
 
         ### Decision Variables
         num_user = self.existing_user_info.shape[0] # No. all flex users
@@ -464,7 +464,7 @@ class Optimization_station:
         ## Solve 
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve(solver='SCS')
+        prob.solve()
         
         # try:
         #     print("u:",np.round(u.value,2 ))
@@ -644,20 +644,31 @@ class Optimization_station:
         v_iter = np.zeros((3,itermax))
         J_sub = np.zeros((3,itermax))
 
-        while (count < 5) & (improve >= 0) & (abs(improve) >= 0.00001):
+        while (count < itermax) & (improve >= 0) & (abs(improve) >= 0.00001):
 
             Jk[count] = J_func(zk, uk_flex, vk).sum()
             J_sub[:, count] = J_func(zk, uk_flex, vk).reshape(3,)
             # rev_flex[count], rev_asap[count] = charging_revenue(zk, uk_flex)
             z_iter[:, count] = zk.reshape((4,))
             v_iter[:, count] = vk.reshape((3,))
-
-            uk_flex, e_deliveredk_flex = self.argmin_u(zk, vk)
+            try:
+                uk_flex, e_deliveredk_flex = self.argmin_u(zk, vk)
+            except:
+                print('uk is not updated')
+                pass
 
             uk = uk_flex.reshape(-1, self.var_dim_constant)
-            
-            vk = self.argmin_v(uk_flex, zk)
-            zk = self.argmin_z(uk_flex, vk)
+            try:
+                vk = self.argmin_v(uk_flex, zk)
+            except:
+                print('vk is not updated')
+                pass
+
+            try:
+                zk = self.argmin_z(uk_flex, vk)
+            except:
+                print("zk is not updated")
+                pass
 
             improve = Jk[count] - J_func(zk, uk_flex, vk).sum()
             # print(J_func(zk, uk_flex, vk))
@@ -666,6 +677,7 @@ class Optimization_station:
         # Iteration finished.
 
         print("After %d iterations," % count, "we got %f " % improve, "improvements, and claim convergence.")
+        print("The prices are %f" %zk[0], "%f" %zk[1])
 
         # Iteration Ends. Now we need to: 1. update flex user profile 2. Output [station, res]
         N_max = self.var_dim_constant # The maximum possible intervals
@@ -707,30 +719,22 @@ class Optimization_station:
         self.asap_powers = asap_powers
 
         self.flex_poewrs = opt["flex_powers"]
-        flex_power_sum_profile = uk_flex.reshape(int(len(uk_flex) / self.var_dim_constant), self.var_dim_constant)  # Row: # of user, Col: Charging Profile
-        flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
-
-        asap_power_sum_profile = np.zeros(self.var_dim_constant)
-        for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
-            user = self.station[user_keys[i]]
-            TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
-            asap_power_sum_profile[N_max + 1: N_max + 1 + user.Problem.N_asap - TOU_idx] += user.asap_powers[
-                                                                                            TOU_idx:].squeeze()
-        power_sum = flex_power_sum_profile + asap_power_sum_profile
-
-        opt["power_sum"] = power_sum[int(N_max) + 1:].reshape(-1, 1)
-        opt["power_sum_N"] = N_max
 
         opt["v"] = vk
         opt["prob_flex"] = vk[0]
         opt["prob_asap"] = vk[1]
         opt["prob_leave"] = vk[2]
-        flex_power_sum_profile = uk_flex.reshape(int(len(uk_flex) / self.var_dim_constant), self.var_dim_constant)  # Row: # of user, Col: Charging Profile
+
+        flex_power_sum_profile = uk_flex.reshape(-1, self.var_dim_constant)  # Row: # of user, Col: Charging Profile
         flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
 
         asap_power_sum_profile = np.zeros(self.var_dim_constant)
+        user_keys = self.station["ASAP_list"]
         for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
-            user = self.station[user_keys[i]]
+            try:
+                user = self.station[user_keys[i]]
+            except:
+                print("ASAP user not found")
             TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
             asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
         power_sum = flex_power_sum_profile + asap_power_sum_profile
@@ -841,7 +845,7 @@ class Optimization_charger:
         ## Solve
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve(solver='SCS')
+        prob.solve()
 
         # try:
         #     # print(  "v",v.value)
@@ -932,7 +936,7 @@ class Optimization_charger:
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
 
-        prob.solve(solver='SCS')
+        prob.solve()
 
         # try:
         #     # print("z",np.round(z.value,5))
@@ -1034,7 +1038,7 @@ class Optimization_charger:
         ## Solve
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
-        prob.solve(solver='SCS')
+        prob.solve()
 
         # try:
         #     print("u:",np.round(u.value,2 ))
@@ -1112,6 +1116,7 @@ class Optimization_charger:
         # xk = np.ones((2 * self.Problem.N_flex + 1, 1)) # [soc0, ..., socN, u0, ..., uNm1]; - multiple dimensions 1 +  # of FLEX
 
         zk = self.Parameters.z0
+        # uk_flex = self.Problem.station_pow_max * np.ones((self.Problem.N_flex))
         uk_flex = np.zeros((self.Problem.N_flex))
         vk = self.Parameters.v0  # [sm_c, sm_uc, sm_y]
 
@@ -1145,7 +1150,8 @@ class Optimization_charger:
             # print(J_func(zk, uk_flex, vk))
             count += 1
 
-        print(count, improve)
+        print("After %d iterations," % count, "we got %f " % improve, "improvements, and claim convergence.")
+        print("The prices are %f" %zk[0], "%f" %zk[1])
         opt = {}
         opt['e_need'] = self.Problem.e_need
         opt["z"] = zk
