@@ -4,7 +4,7 @@ from session_generator2 import *
 
 
 # List with number of sessions for different days ([number of sessions on day 1, ..., number of sessions on the last day])
-daily_sessions = [10]*10
+daily_sessions = [12]*10
 
 input_gen = InputGen(daily_sessions=daily_sessions, data_file='../data/Sessions2.csv', rnd_seeds=(4,5,30))
 # input_gen = InputGen(daily_sessions=daily_sessions, data_file='../data/ChargePointEV.csv', rnd_seeds=(4,5,30))
@@ -44,6 +44,22 @@ print(input_df)
 input_df = input_df.sort_values(['arrivalDay', 'arrivalHour','arrivalMinGlobal'], ascending = [True,True, True])  # ascending order
 input_df = input_df.reset_index(drop=True)
 
+print(input_df['arrivalDay'].value_counts())
+
+day_session = 10
+for day in range(day_session):
+    day_count = 0
+    for i in range(input_df.shape[0]):
+        if (input_df['arrivalDay'][i] == day):
+            day_count = day_count + 1
+            # print('day', day, 'day_count',day_count)
+            if(day_count > 10):
+                input_df['arrivalDay'] = input_df['arrivalDay'].drop(index = [i])
+                # break
+
+# print(input_df['arrivalDay'].value_counts())
+input_df = input_df.dropna()
+input_df = input_df.reset_index(drop=True)
 print(input_df)
 print(input_df.shape)
 
