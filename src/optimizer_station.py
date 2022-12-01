@@ -725,22 +725,22 @@ class Optimization_station:
         opt["prob_asap"] = vk[1]
         opt["prob_leave"] = vk[2]
 
-        flex_power_sum_profile = uk_flex.reshape(-1, self.var_dim_constant)  # Row: # of user, Col: Charging Profile
-        flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
-
-        asap_power_sum_profile = np.zeros(self.var_dim_constant)
-        user_keys = self.station["ASAP_list"]
-        for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
-            try:
-                user = self.station[user_keys[i]]
-            except:
-                print("ASAP user not found")
-            TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
-            asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
-        power_sum = flex_power_sum_profile + asap_power_sum_profile
-
-        opt["power_sum"] = power_sum.reshape(-1, 1)
-        opt["power_sum_N"] = N_max
+        # flex_power_sum_profile = uk_flex.reshape(-1, self.var_dim_constant)  # Row: # of user, Col: Charging Profile
+        # flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
+        #
+        # asap_power_sum_profile = np.zeros(self.var_dim_constant)
+        # user_keys = self.station["ASAP_list"]
+        # for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
+        #     try:
+        #         user = self.station[user_keys[i]]
+        #     except:
+        #         print("ASAP user not found")
+        #     TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
+        #     asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
+        # power_sum = flex_power_sum_profile + asap_power_sum_profile
+        #
+        # opt["power_sum"] = power_sum.reshape(-1, 1)
+        # opt["power_sum_N"] = N_max
 
         opt["J"] = Jk[:count]
         opt["J_sub"] = J_sub[:, :count]
