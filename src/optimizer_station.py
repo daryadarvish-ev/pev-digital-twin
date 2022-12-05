@@ -35,7 +35,7 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
-        self.cost_dc = 0  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = 100  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
         # 18.8 --> 300 We can change this value to show the effect of station-level impact.
 
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
@@ -675,6 +675,9 @@ class Optimization_station:
             count += 1
 
         # Iteration finished.
+        if zk[0] >= 30:
+            zk = z_iter[:, 1]
+            vk = v_iter[:, 1]
 
         print("After %d iterations," % count, "we got %f " % improve, "improvements, and claim convergence.")
         print("The prices are %f" %zk[0], "%f" %zk[1])
@@ -724,23 +727,25 @@ class Optimization_station:
         opt["prob_flex"] = vk[0]
         opt["prob_asap"] = vk[1]
         opt["prob_leave"] = vk[2]
+        opt["N_flex"] = self.Problem.N_flex
+        opt["N_asap"] = self.Problem.N_asap
 
-        flex_power_sum_profile = uk_flex.reshape(-1, self.var_dim_constant)  # Row: # of user, Col: Charging Profile
-        flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
+        # flex_power_sum_profile = uk_flex.reshape(-1, self.var_dim_constant)  # Row: # of user, Col: Charging Profile
+        # flex_power_sum_profile = np.sum(flex_power_sum_profile, axis=0)
+        #
+        # asap_power_sum_profile = np.zeros(self.var_dim_constant)
+        # user_keys = self.station["ASAP_list"]
+        # for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
+        #     try:
+        #         user = self.station[user_keys[i]]
+        #     except:
+        #         print("ASAP user not found")
+        #     TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
+        #     asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
+        # power_sum = flex_power_sum_profile + asap_power_sum_profile
 
-        asap_power_sum_profile = np.zeros(self.var_dim_constant)
-        user_keys = self.station["ASAP_list"]
-        for i in range(len(self.station['ASAP_list'])):  # for all ASAP users
-            try:
-                user = self.station[user_keys[i]]
-            except:
-                print("ASAP user not found")
-            TOU_idx = int(self.k / self.Parameters.Ts - user.Problem.user_time)
-            asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
-        power_sum = flex_power_sum_profile + asap_power_sum_profile
-
-        opt["power_sum"] = power_sum.reshape(-1, 1)
-        opt["power_sum_N"] = N_max
+        # opt["power_sum"] = power_sum.reshape(-1, 1)
+        # opt["power_sum_N"] = N_max
 
         opt["J"] = Jk[:count]
         opt["J_sub"] = J_sub[:, :count]
@@ -1186,6 +1191,8 @@ class Optimization_charger:
         opt["rev_flex"] = rev_flex[:count]
         opt["rev_asap"] = rev_asap[:count]
         opt["power_sum"] = uk_flex.reshape(-1, 1)
+        opt["N_flex"] = self.Problem.N_flex
+        opt["N_asap"] = self.Problem.N_asap
 
         opt["num_iter"] = count
         opt["prb"] = self.Problem

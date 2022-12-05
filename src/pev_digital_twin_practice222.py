@@ -32,6 +32,8 @@ CAR_STAY_TIME = 300
 
 sorted_events_q = []
 
+total_revenue = []
+total_cost = []
 #session output
 session = []
 #choice output
@@ -204,15 +206,15 @@ def charger_station(env, input_df, run_time):
         prb = Problem(par=par, event=event)
 
         #
-        # opt = Optimization(par, prb)
-        # res = opt.run_opt()
+        opt = Optimization_charger(par, prb)
+        res = opt.run_opt()
 
-        if not station['FLEX_list'] and not station['ASAP_list']:
-            opt = Optimization_charger(par, prb)
-            res = opt.run_opt()
-        else:
-            opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
-            station, res = opt.run_opt()
+        # if not station['FLEX_list'] and not station['ASAP_list']:
+        #     opt = Optimization_charger(par, prb)
+        #     res = opt.run_opt()
+        # else:
+        #     opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
+        #     station, res = opt.run_opt()
 
         station["EV" + str(user)] = opt
         ################### RES GLOBAL #############
@@ -248,7 +250,21 @@ def charger_station(env, input_df, run_time):
 
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
 
-        choice = choice_function(asap_price, flex_price)
+        # choice = choice_function(asap_price, flex_price)
+        choice = 2
+        asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
+        asap_power, flex_power = (res['asap_powers'], res['flex_powers'])
+        N_asap, N_flex = (res['N_asap'], res['N_flex'])
+
+        # Driver choice based on the tariff
+        start_ind = int(arrival_hour[user - 1] / delta_t)
+        if choice == 1:
+            total_revenue.append(asap_price * e_need[user - 1])
+            total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_asap], asap_power*0.25).sum())
+        elif choice == 2:
+            total_revenue.append(flex_price * e_need[user - 1])
+            total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_flex], flex_power.squeeze()*0.25).sum())
+
         if choice == 1:
             station["ASAP_list"].append("EV" + str(user))
             station["EV" + str(user)].price = asap_price
