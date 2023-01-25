@@ -89,6 +89,10 @@ global temp_Scheduled
 global temp_leave
 station_in = dict()
 
+total_revenue = []
+total_cost = []
+total_dc = []
+
 e_NEED = []
 
 z_flex = []
@@ -219,7 +223,7 @@ def charger_station(env, input_df, run_time):
         print('Currently user %d is using' %(user))
         ##################################################
         prb = Problem(par=par, event=event)
-        ######################################################
+        # ######################################################
         # opt = Optimization_charger(par, prb)
         #
         # res = opt.run_opt()
@@ -242,9 +246,9 @@ def charger_station(env, input_df, run_time):
         flex_tarrif.append(res['tariff_flex'])
         asap_tarrif.append(res['tariff_asap'])
         # leave_tarrif.append(res['tariff_overstay'])  ## Erased in the station_df too. if you want to add later, you have to add in the station_df too.
-        v_flex.append(res['v'][0])
-        v_asap.append(res['v'][1])
-        v_leave.append(res['v'][2])
+        # v_flex.append(res['v'][0])
+        # v_asap.append(res['v'][1])
+        # v_leave.append(res['v'][2])
         prob_flex.append(res['prob_flex'])
         prob_asap.append(res['prob_asap'])
         prob_leave.append(res['prob_leave'])
@@ -252,9 +256,20 @@ def charger_station(env, input_df, run_time):
 
         # Find the Optimized Price with the given arrival time & Energy requested & Departure
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
+        asap_power, flex_power = (res['asap_powers'], res['flex_powers'])
+        N_asap, N_flex = (res['N_asap'], res['N_flex'])
 
         # Driver choice based on the tariff
         choice = choice_function(asap_price, flex_price)
+        start_ind = int(arrival_hour[user - 1] / delta_t)
+        if choice == 1:
+            total_revenue.append(asap_price * e_need[user - 1])
+            total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_asap], asap_power*0.25).sum())
+        elif choice == 2:
+            total_revenue.append(flex_price * e_need[user - 1])
+            total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_flex], flex_power*0.25).sum())
+
+
 
         # If the choice is ASAP then, we change the duration
         #################################################THIS is when ASAP user departs right after charging is over ########################
