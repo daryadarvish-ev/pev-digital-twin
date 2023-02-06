@@ -1,16 +1,11 @@
 # Import libraries
 
 import random
-
 import matplotlib.pyplot as plt
-# from google.colab import drive
 import seaborn as sns
 import simpy
-import numpy as np
 from matplotlib.pyplot import figure
-
 from optimizer_station import *
-# from optimizer_tugba_practice import *
 from session_generation_practice import *
 
 #from Station import *
@@ -22,6 +17,9 @@ from session_generation_practice import *
 warnings.filterwarnings('ignore')
 # %matplotlib inline
 sns.set_theme()
+# Set the random seed for reproducibility(keep the choice the same)
+np.random.seed(42)
+random.seed(42)
 
 
 # SIMULATION PARAMETERS
@@ -205,19 +203,10 @@ def charger_station(env, input_df, run_time):
 
         prb = Problem(par=par, event=event)
 
-        #
-        opt = Optimization_charger(par, prb)
-        res = opt.run_opt()
-
-        # if not station['FLEX_list'] and not station['ASAP_list']:
-        #     opt = Optimization_charger(par, prb)
-        #     res = opt.run_opt()
-        # else:
-        #     opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
-        #     station, res = opt.run_opt()
+        opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
+        station, res = opt.run_opt()
 
         station["EV" + str(user)] = opt
-        ################### RES GLOBAL #############
 
         e_NEED.append(res['e_need'])
         z_flex.append(res['z'][0])
@@ -250,8 +239,7 @@ def charger_station(env, input_df, run_time):
 
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
 
-        # choice = choice_function(asap_price, flex_price)
-        choice = 2
+        choice = choice_function(asap_price, flex_price)
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
         asap_power, flex_power = (res['asap_powers'], res['flex_powers'])
         N_asap, N_flex = (res['N_asap'], res['N_flex'])
