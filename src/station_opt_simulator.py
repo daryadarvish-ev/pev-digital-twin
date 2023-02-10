@@ -206,6 +206,9 @@ def charger_station(env, input_df, run_time):
         opt = Optimization_station(par, prb, station, arrival_hour[user - 1])
         station, res = opt.run_opt()
 
+        # opt = Optimization_charger(par, prb)
+        # res = opt.run_opt()
+
         station["EV" + str(user)] = opt
 
         e_NEED.append(res['e_need'])
