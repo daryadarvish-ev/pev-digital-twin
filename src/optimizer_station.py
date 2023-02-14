@@ -35,7 +35,10 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
+
         self.cost_dc = 100  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = 100  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = 0  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
         # 18.8 --> 300 We can change this value to show the effect of station-level impact.
 
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
@@ -679,8 +682,12 @@ class Optimization_station:
             zk = z_iter[:, 1]
             vk = v_iter[:, 1]
 
+        if zk[0] >= 30:
+            zk = z_iter[:, 1]
+            vk = v_iter[:, 1]
+
         print("After %d iterations," % count, "we got %f " % improve, "improvements, and claim convergence.")
-        print("The prices are %f" %zk[0], "%f" %zk[1])
+        print("The prices for flex : %f" %zk[0], ",  asap : %f" %zk[1])
 
         # Iteration Ends. Now we need to: 1. update flex user profile 2. Output [station, res]
         N_max = self.var_dim_constant # The maximum possible intervals
@@ -727,6 +734,9 @@ class Optimization_station:
         opt["prob_flex"] = vk[0]
         opt["prob_asap"] = vk[1]
         opt["prob_leave"] = vk[2]
+        opt["N_flex"] = self.Problem.N_flex
+        opt["N_asap"] = self.Problem.N_asap
+
         opt["N_flex"] = self.Problem.N_flex
         opt["N_asap"] = self.Problem.N_asap
 
@@ -1156,7 +1166,8 @@ class Optimization_charger:
             count += 1
 
         print("After %d iterations," % count, "we got %f " % improve, "improvements, and claim convergence.")
-        print("The prices are %f" %zk[0], "%f" %zk[1])
+        # print("The prices are %f" %zk[0], "%f" %zk[1])
+        print("The prices for flex : %f" % zk[0], ",  asap : %f" % zk[1])
         opt = {}
         opt['e_need'] = self.Problem.e_need
         opt["z"] = zk
@@ -1193,6 +1204,9 @@ class Optimization_charger:
         opt["power_sum"] = uk_flex.reshape(-1, 1)
         opt["N_flex"] = self.Problem.N_flex
         opt["N_asap"] = self.Problem.N_asap
+        opt["N_flex"] = self.Problem.N_flex
+        opt["N_asap"] = self.Problem.N_asap
+
 
         opt["num_iter"] = count
         opt["prb"] = self.Problem

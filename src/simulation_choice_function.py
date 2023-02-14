@@ -10,9 +10,9 @@ def choice_function(asap_price, flex_price):
         return Choice
     if asap_price > flex_price:
         choice = 1
-        Choice.append("Regular")
+        Choice.append("Scheduled")
         return Choice
     else:
         choice = 2
-        Choice.append("Scheduled")
+        Choice.append("Regular")
         return Choice

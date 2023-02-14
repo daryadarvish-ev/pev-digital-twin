@@ -8,6 +8,7 @@ class InputGen:
     def __init__(self, daily_sessions, data_file, rnd_seeds=(100, 200, 300)):
         self.ses = daily_sessions
         self.data = pd.read_csv(data_file, parse_dates=['connectTime', 'startChargeTime', 'Deadline', 'lastUpdate'])
+        
         #####
         # self.data = pd.read_csv(data_file, parse_dates=['connectTime'])
         # for i in range(self.data.shape[0]):
@@ -18,9 +19,11 @@ class InputGen:
         self.df = pd.DataFrame(columns=['arrivalDay','arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
         self.rnd_seeds = rnd_seeds
 
+
     def arrival_gen(self):
         self.data['arrivalMin'] = self.data['connectTime'].apply(lambda x: x.hour * 60 + x.minute)
         self.data['arrivalHour'] = self.data['connectTime'].apply(lambda x: x.hour)
+        
         for i in range(len(self.ses)):
             np.random.seed(self.rnd_seeds[0] + i)
             quantiles = sorted(np.random.rand(self.ses[i]))
@@ -35,6 +38,8 @@ class InputGen:
         self.df['arrivalHour'] = self.df['arrivalHour'].apply(lambda x: (x))
         self.df['arrivalMinGlobal'] = self.df['arrivalMinGlobal'].apply(lambda x: int(x))
 
+        
+        ###################################################################
     def duration_gen(self, bins=(0, 472, 654, 1440)):
         self.data['arrivalPeriod'] = pd.cut(self.data['arrivalMin'],
                                             bins=bins,
@@ -93,3 +98,5 @@ class InputGen:
         self.df['averagePower'] = avg_pow
         self.df['cumEnergy_kWh'] = self.df.apply(lambda x: int(x['averagePower']*x['durationMin']/(60*1000)), axis=1) # I have changed the column name from cumEnergy_Wh to kWh
         self.df.drop(['averagePower', 'durationType'], axis=1, inplace=True)
+
+
