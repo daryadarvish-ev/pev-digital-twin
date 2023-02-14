@@ -178,7 +178,7 @@ def charger_station(env, input_df, run_time):
 
         # generate stay duration
         stay_duration = input_df['durationHour'][user - 1] * 60
-
+        print ('############################# start of iteration #############################')
         print('curr_time = ', int(env.now))
         print('departure_time = ', int(env.now) + int(stay_duration))
         print('requested_energy = ', desired_energy)
@@ -187,7 +187,7 @@ def charger_station(env, input_df, run_time):
 
         # We define the timesteps in the APP as 15 minute
         delta_t = 0.25  # hour
-        print("For delta_t: ", delta_t, "max number of intervals:", 24 / delta_t)
+        # print("For delta_t: ", delta_t, "max number of intervals:", 24 / delta_t)
         ################## Define the TOU Cost ##########################################
         ## the TOU cost is defined consid
         # ering the delta_t above, if not code raises an error.##
@@ -220,12 +220,11 @@ def charger_station(env, input_df, run_time):
             "departureMinGlobal": int(input_df['arrivalMinGlobal'][user-1] + input_df['durationHour'][user-1] * 60)
         }
 
-        print('Currently user %d is using' %(user))
+        print('Currently %d th user is using' %(user))
         ##################################################
         prb = Problem(par=par, event=event)
-        # ######################################################
+
         # opt = Optimization_charger(par, prb)
-        #
         # res = opt.run_opt()
 
         #######################################################################
@@ -246,9 +245,19 @@ def charger_station(env, input_df, run_time):
         flex_tarrif.append(res['tariff_flex'])
         asap_tarrif.append(res['tariff_asap'])
         # leave_tarrif.append(res['tariff_overstay'])  ## Erased in the station_df too. if you want to add later, you have to add in the station_df too.
+
         # v_flex.append(res['v'][0])
         # v_asap.append(res['v'][1])
         # v_leave.append(res['v'][2])
+
+        # v_flex.append(res['v'][0])
+        # v_asap.append(res['v'][1])
+        # v_leave.append(res['v'][2])
+
+        v_flex.append(res['v'][0])
+        v_asap.append(res['v'][1])
+        v_leave.append(res['v'][2])
+
         prob_flex.append(res['prob_flex'])
         prob_asap.append(res['prob_asap'])
         prob_leave.append(res['prob_leave'])
@@ -256,11 +265,14 @@ def charger_station(env, input_df, run_time):
 
         # Find the Optimized Price with the given arrival time & Energy requested & Departure
         asap_price, flex_price = (res['tariff_asap'], res['tariff_flex'])
+
         asap_power, flex_power = (res['asap_powers'], res['flex_powers'])
         N_asap, N_flex = (res['N_asap'], res['N_flex'])
 
         # Driver choice based on the tariff
         choice = choice_function(asap_price, flex_price)
+        print("User's choice : ", choice[user-1])
+
         start_ind = int(arrival_hour[user - 1] / delta_t)
         if choice == 1:
             total_revenue.append(asap_price * e_need[user - 1])
@@ -269,6 +281,9 @@ def charger_station(env, input_df, run_time):
             total_revenue.append(flex_price * e_need[user - 1])
             total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_flex], flex_power*0.25).sum())
 
+        #
+        # # Driver choice based on the tariff
+        # choice = choice_function(asap_price, flex_price)
 
 
         # If the choice is ASAP then, we change the duration
@@ -295,7 +310,7 @@ def charger_station(env, input_df, run_time):
         ASAP_Schedule_list(user, station, opt, asap_price, flex_price)
         print('the current stat of station', station)
 
-        print('the current stat of station', station)
+        print(" ############################# End of iteration #############################")
         # print('the current state of station_in', station_in)
 
         # rates output
@@ -418,17 +433,10 @@ def ASAP_Schedule_list (user , station, opt, asap_price, flex_price):
                 temp_leave.clear()
                 station.clear()
 
-            station['FLEX_list'] = temp_ASAP
-            station['ASAP_list'] = temp_Scheduled
+            station['FLEX_list'] = temp_Scheduled
+            station['ASAP_list'] = temp_ASAP
             station['Leave'] = temp_leave
             station['Day'] = day_temp
-
-            # station['Price'] = temp_price
-            # if ( user == 10 ):
-            #     temp_ASAP.clear()
-            #     temp_Scheduled.clear()
-            #     temp_leave.clear()
-            #     station.clear()
 
     return(station)
 
