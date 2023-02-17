@@ -3,9 +3,10 @@ This repository is a digital twin simulator for optimizer EV charging. This work
 
 
 # Getting Started
+## Prerequisites
 
-
-
+# Running the tests
+# Deployment
 
 # Contributing
 

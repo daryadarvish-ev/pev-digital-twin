@@ -82,15 +82,22 @@ class Problem:
         self.N_asap = math.ceil((self.e_need / self.power_rate / par.eff * int(1 / par.Ts)))
         self.N_asap_remainder = (self.e_need / self.power_rate / par.eff * int(1 / par.Ts)) % 1
 
-#         print(par.TOU) 
-        if len(par.TOU) < self.user_time + self.user_duration: # if there is overnight chaarging 
-            par.TOU = np.concatenate([par.TOU,par.TOU]) 
+        self.assertion_flag = 0
+        ## Option 1: Update the e_need to avoid opt failure
+        if self.N_flex < self.N_asap:
+            # self.e_need = self.N_flex * self.power_rate * par.eff * par.Ts
+            # self.assertion_flag = 1
+        ## Option 2: Update the N_flex to avoid opt failure
+            self.N_flex = self.N_asap
+            self.user_duration = self.N_flex
+            self.assertion_flag = 1
 
+        if len(par.TOU) < self.user_time + self.user_duration: # if there is overnight chaarging
+            par.TOU = np.concatenate([par.TOU,par.TOU])
         self.TOU = par.TOU[self.user_time:(self.user_time + self.user_duration)]
-#         print(self.TOU) 
         # self.TOU = interpolate.interp1d(np.arange(0, 24 - 0.25 + 0.1, 0.25), par.TOU, kind = 'nearest')(np.arange(self.user_time, 0.1 + self.user_time + self.user_duration - par.Ts, par.Ts)).T
         
-        assert self.N_asap <= self.N_flex, print("Not enought time (n_asap,n_flex)",self.N_asap,self.N_flex)
+        # assert self.N_asap <= self.N_flex, print("Not enought time (n_asap,n_flex)",self.N_asap,self.N_flex)
 
 class Optimization_station:
     """
@@ -538,7 +545,7 @@ class Optimization_station:
         self.var_dim_constant = var_dim_constant
 
         # Initial values for uk
-        uk_flex = self.Problem.station_pow_max * np.zeros([var_dim_constant * (num_flex_user + 1), 1]) # We are optimizing the FLEX profile, so the dimension is all possible flex users * dimension_con
+        uk_flex = self.Problem.power_rate * np.zeros([var_dim_constant * (num_flex_user + 1), 1]) # We are optimizing the FLEX profile, so the dimension is all possible flex users * dimension_con
 
         def J_func(z, u, v):
             # See the detailed comments of all J_func funcitons in self.argmin_u() (All of them are nearly identical)
@@ -666,6 +673,10 @@ class Optimization_station:
             # print(J_func(zk, uk_flex, vk))
             count += 1
 
+            if count >= 50:
+                print("Too much time for iteration.")
+                break
+
         # Iteration finished.
         if zk[0] >= 30:
             zk = z_iter[:, 1]
@@ -694,30 +705,35 @@ class Optimization_station:
         ### Output the results
         opt = {}
         opt['e_need'] = self.Problem.e_need
+
+        # Part 1: Prices
         opt["z"] = zk
         opt["z_hr"] = zk * self.Problem.power_rate
         # Add a self.price = chosen mode price in outer loop by calling all z values in optimizer
-        opt["tariff_flex"] = zk[0]
-        opt["tariff_asap"] = zk[1]
+        opt["tariff_sch"] = zk[0]
+        opt["tariff_reg"] = zk[1]
+        opt["sch_centsPerHr"] = opt["z_hr"][0]
+        opt["reg_centsPerHr"] = opt["z_hr"][1]
 
-        opt["sch_centsPerHr"] = zk[0] * self.Problem.power_rate
-        opt["reg_centsPerHr"] = zk[1] * self.Problem.power_rate
-
-        # update demand charge
+        # Part 2: Power Profiles
         opt["peak_pow"] = max(uk_flex)
-        opt["flex_e_delivered"] = e_deliveredk_flex
+        opt["sch_e_delivered"] = e_deliveredk_flex
         N_remain = int(self.Problem.user_duration)
-        opt["flex_powers"] = uk_flex[: N_remain]
+        opt["sch_powers"] = uk_flex[: N_remain]
         self.Problem.powers = uk_flex[: N_remain]
 
         # For a possible "NEW" "ASAP" user, we assume that it's at the maximum for all ASAP intervals
-        asap_powers = np.ones((self.Problem.N_asap, 1)) * self.Problem.station_pow_max
+        asap_powers = np.ones((self.Problem.N_asap, 1)) * self.Problem.power_rate
         if self.Problem.N_asap_remainder != 0: # For the last time slot, ASAP may not occupy the whole slot.
-            asap_powers[self.Problem.N_asap - 1] = self.Problem.station_pow_max * self.Problem.N_asap_remainder
-        opt["asap_powers"] = asap_powers
+            asap_powers[self.Problem.N_asap - 1] = self.Problem.power_rate * self.Problem.N_asap_remainder
+        opt["reg_powers"] = asap_powers
         self.asap_powers = asap_powers
+        self.sch_powers = opt["sch_powers"]
 
-        self.flex_poewrs = opt["flex_powers"]
+        if self.Problem.assertion_flag == 1:
+            opt["sch_powers"] = asap_powers
+
+        # Part 3: Probability & Iteration Parameters
 
         opt["v"] = vk
         opt["prob_flex"] = vk[0]
@@ -732,16 +748,19 @@ class Optimization_station:
         opt["v_iter"] = v_iter[:, :count]
         opt["rev_flex"] = rev_flex[:count]
         opt["rev_asap"] = rev_asap[:count]
-
         opt["num_iter"] = count
-        opt["prb"] = self.Problem
-        opt["par"] = self.Parameters
         opt["time_start"] = self.Problem.user_time
         opt["time_end_flex"] = self.Problem.user_time + self.Problem.user_duration
-        opt["time_end_asap"] = self.Problem.user_time + self.Problem.N_asap 
+        opt["time_end_asap"] = self.Problem.user_time + self.Problem.N_asap
+
+        # Part 4: General Problem Space
+        opt["prb"] = self.Problem
+        opt["par"] = self.Parameters
+
         end = timeit.timeit()
 
-        station = self.station # We upate the station struct every round.d
+        # Part 5: Station information(struct / class / dict?)
+        station = self.station # We update the station struct every round.
 
         return station, opt
 
