@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
+np.random.seed(1)
 
 # Obtain secret key for AWS
 f = open("secret.txt")
