@@ -5,10 +5,6 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import plotly
-import plotly.graph_objects as go
-import plotly.io as pio
-from plotly.subplots import make_subplots
 from mpl_toolkits.mplot3d import Axes3D
 from pylab import *
 from process import unpack_power
@@ -273,9 +269,9 @@ def stationID_PwrDem_Time(df):
 # energyDelivered_DurationHrs_joint(df1)
 # arr_Time, dept_Time = Time_processing(df1)
 # energyDelivered_Arrvltime_joint(df1, arr_Time)
-=======
-                      break_long_words=break_long_words))
-    ax.set_xticklabels(labels, rotation=0)
+# =======
+#                       break_long_words=break_long_words))
+#     ax.set_xticklabels(labels, rotation=0)
 
 
 def plot_choice_per_vehicle_model(df, vehicle_models=['Model 3', 'Prius Prime', 'Volt', 'Bolt EV']):
