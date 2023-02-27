@@ -537,6 +537,7 @@ class Optimization_station:
         opt["reg_centsPerHr"] = opt["z_hr"][1]
 
         # Part 2: Power Profiles
+        opt["power_rate"] = self.Problem.power_rate
         opt["peak_pow"] = max(uk_flex)
         opt["sch_e_delivered"] = e_deliveredk_flex
         N_remain = int(self.Problem.user_duration)

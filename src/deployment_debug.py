@@ -352,8 +352,7 @@ def arrHourList(arrHour, optHorizon):
         lst = list(range(arrHour,24))
         lst.extend(list(range( 0 , ((arrHour+optHorizon)-24) )))
 
-        return lst 
-
+        return lst
 
 # %%
 import datetime
@@ -392,6 +391,51 @@ def data_format_convertion(stateRecords, opt_hour, delta_t):
 # Also need the TOU(can be derived from start and deadline and global TOU) and prices for existing vehicles!
 
 # %%
+def convertOutput(stateRecords, station_info, res, opt_time):
+    """ Convert the output to the original format """
+    new_state = copy.deepcopy(stateRecords[0])
+    if new_state["sessions"]:
+        for user in new_state["sessions"]:
+            timezone = datetime.timezone(datetime.timedelta(hours=0))
+            end_time_obj = datetime.datetime.fromtimestamp(int(user["optPower"][-1][0]), timezone) # Or retrieve the last time slot??
+            end_time = float(end_time_obj.hour + end_time_obj.minute / 60) + delta_t
+            if end_time <= opt_time:
+                del(new_state["sessions"][user])
+                continue
+            user_update = [d for d in station_info if d["dcosId"] == user["dcosId"]][0] # The updated user info from opt output
+            TOU_idx = user_update["TOU_idx"]
+            user["optPower"][TOU_idx:, 1] = (user_update["optPower"][TOU_idx:] * 1000).astype(int) # Retaining the UNIXTIME and updating the power
+    new_user = dict()
+    new_user["dcosId"] = "dummyUser"
+    new_user["powerRate"] = "HIGH" if res["power_rate"] == 6.6 else "LOW"
+    new_user["choice"] = "SCH" # This choice and OPT power / price are decided outside the optimizer
+    new_user["optPower"], new_user["deadline"] = powerOutput(res)
+    new_user["energyNeeded"] = int(1000 * res['e_need'])
+    ## TO-DO: How to get the deadline? Is it the rounded and discretized time or the actual time? For example, 8:45(Rounded) / 8:47(Actual)?
+    new_state["sessions"].append(new_user)
+
+    return new_state
+
+def powerOutput(res):
+    """ Convert the output to the original format """
+    start_timestamp = res["time_start"] * delta_t
+    start_timestamp_hour = int(start_timestamp)
+    start_timestamp_minute = int((start_timestamp % 1) * 60)
+    start_time = datetime.datetime(2023, 2, 7, start_timestamp_hour, start_timestamp_minute, 0)
+    t0 = unixTime(start_time)
+
+    end_timestamp = res["time_end_SCH"] * delta_t
+    end_timestamp_hour = int(end_timestamp)
+    end_timestamp_minute = int((end_timestamp % 1) * 60)
+    end_time = datetime.datetime(2023, 2, 7, end_timestamp_hour, end_timestamp_minute, 0)
+    t1 = unixTime(end_time)
+
+    timestamps = np.arange(t0, t1, delta_t * 60 * 60).astype(int)   # In seconds, for example, 0.25 * 60 = 15min in seconds
+    optPower = res["sch_powers"] * 1000
+    optPower = optPower.astype(int)
+    output_power = np.concatenate((timestamps.reshape(-1, 1), optPower.reshape(-1, 1)), axis=1)
+
+    return output_power, t1
 ## TO-DO Yifei Function Here 
 def generateOptPricePower(expectedDemand):
     
@@ -441,6 +485,9 @@ def generateOptPricePower(expectedDemand):
             obj = opt.Optimization_station(par, prb, stateRecord, hour)
             station_info, res = obj.run_opt()
 
+            new_state = convertOutput(stateRecords, station_info, res, hour)
+            stateRecords.insert(0, new_state)
+
 #             reg_centsPerHr, sch_centsPerHr = res["reg_centsPerHr"], res['sch_centsPerHr']
 
 #             expected_demand.loc[(hour, highPower), 'sch_centsPerHr'] = sch_centsPerHr 
@@ -448,5 +495,4 @@ def generateOptPricePower(expectedDemand):
 #             expected_demand.loc[(hour, highPower), 'sch_expected_power_W' ] = json.dumps(list(res['flex_powers'].flatten()))
 #             expected_demand.loc[(hour, highPower), 'reg_expected_power_W' ] = json.dumps(list(res['asap_powers'].flatten()))
 generateOptPricePower(expected_demand)
-
 
