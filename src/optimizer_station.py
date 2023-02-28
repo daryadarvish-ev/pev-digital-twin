@@ -52,6 +52,7 @@ class Problem:
         
         self.user_time = event["time"]
         self.e_need = event["e_need"]
+        self.historical_peak = event["historical_peak"]
 
         self.user_duration = event["duration"]
         # self.user_overstay_duration = round(event["overstay_duration"] / par.Ts) * par.Ts
@@ -272,6 +273,7 @@ class Optimization_station:
         power_rate = self.Problem.power_rate
         N_reg_remainder = self.Problem.N_reg_remainder
         delta_t = self.Parameters.Ts
+        historical_peak  = self.Problem.historical_peak 
 
         ### Retrieve parameters for existing users
         existing_sch_obj = 0
@@ -331,12 +333,17 @@ class Optimization_station:
         new_sch_obj = new_sch_obj.flatten()[0]
         new_reg_obj = new_reg_obj.flatten()[0]
 
-        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
-            reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))) * v[0]
-        J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
-            reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)) * v[1]
-        J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
-            reg_power_sum_profile + sch_power_sum_profile)) * v[2]
+
+        current_peak_sch = cp.max(reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))
+        current_peak_reg =  cp.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
+        # Dont need this: 
+        # current_peak_leave = cp.max(reg_power_sum_profile + sch_power_sum_profile)
+
+        # first row of the u array is the 
+        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_sch, historical_peak ))* v[0]
+        
+        J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_reg, historical_peak )) * v[1]
+        J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * historical_peak) * v[2]
 
         J = J0 + J1 + J2
         J_array = np.array([J0.value, J1.value, J2.value])
