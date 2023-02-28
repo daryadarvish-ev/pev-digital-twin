@@ -530,6 +530,30 @@ class Optimization_station:
                 # Update the power profile, shape: (-1, 1)
                 user["optPower"][TOU_idx:] = uk_flex[int((i + 1) * var_dim_constant): int((i + 1) * var_dim_constant + N_remain)].reshape(-1)
 
+        ### Track the maximum power
+        # REG
+        reg_power_sum_profile = np.zeros(self.var_dim_constant)
+        if self.station['REG_list']:
+            users = [d for d in self.station_info if d["dcosId"] in self.station['REG_list']]
+            for i in range(len(self.station['REG_list'])): # for all ASAP users
+                user = users[i]
+                TOU_idx = int(self.k / self.Parameters.Ts - user["start_time"])
+                reg_power_sum_profile[: user["N_reg"] - TOU_idx] += user["optPower"][TOU_idx:].reshape(-1)
+        # SCH
+        num_sch = len(self.station["SCH_list"]) + 1
+        # Row: # of user, Col: Charging Profile
+        sch_power_sum_profile = uk_flex.reshape(self.var_dim_constant, num_sch).T
+        sch_power_sum_profile = np.sum(sch_power_sum_profile[1:, :], axis=0) # Shape: (self.var_dim_constant,)
+        # The shape of sch_power_sum_profile is (self.var_dim_constant, 1)
+
+        ## New user charging profile(ASAP)
+        reg_new_user_profile = np.zeros(self.var_dim_constant)
+        reg_new_user_profile[: self.Problem.N_reg - 1] = self.Problem.power_rate
+        reg_new_user_profile[self.Problem.N_reg - 1] = (self.Problem.power_rate * self.Problem.N_reg_remainder) if self.Problem.N_reg_remainder > 0 else self.Problem.power_rate
+
+        sch_max = np.max(reg_power_sum_profile + np.sum(uk_flex.reshape(self.var_dim_constant, num_sch).T, axis=0))
+        reg_max = np.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
+
         ### Output the results
         opt = dict()
         opt['e_need'] = self.Problem.e_need
@@ -560,6 +584,9 @@ class Optimization_station:
 
         if self.Problem.assertion_flag == 1:
             opt["sch_powers"] = reg_powers
+
+        opt["sch_max"] = sch_max
+        opt["reg_max"] = reg_max
 
         # Part 3: Probability & Iteration Parameters Output
 
