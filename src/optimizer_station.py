@@ -19,7 +19,8 @@ class Parameters:
                 eff = 1,  # Charging efficient, assumed to be 100%
                 soft_v_eta = 1e-4, # For convex relaxation in constraints.
                 opt_eps = 0.0001, 
-                TOU = np.ones((96,))): # Time-of-user charging tariff: 96 intervals, 1 day.
+                TOU = np.ones((96,)),
+                demand_charge_cost = 0): # Time-of-user charging tariff: 96 intervals, 1 day.
 
         # TOU Tariff in cents / kwh
         # TOU * power rate = cents  / hour
@@ -33,7 +34,7 @@ class Parameters:
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
         self.opt_eps = opt_eps
-        self.cost_dc = 0  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
+        self.cost_dc = demand_charge_cost  # Cost for demand charge. This value is arbitrary now. A larger value means the charging profile will go average.
         # 18.8 --> 300 We can change this value to show the effect of station-level impact.
 
         assert len(self.TOU) == int(24 / self.Ts), "Mismatch between TOU cost array size and discretization steps"
@@ -332,17 +333,28 @@ class Optimization_station:
 
         new_sch_obj = new_sch_obj.flatten()[0]
         new_reg_obj = new_reg_obj.flatten()[0]
-
+    
 
         current_peak_sch = cp.max(reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))
+        print("sch_peak: ",current_peak_sch.shape )
+        print("pow_opt: ",cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T).shape)
         current_peak_reg =  cp.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
-        # Dont need this: 
+        print("reg_peak: ",current_peak_reg.shape )
+
+        
+ 
+        # # Dont need this: 
         # current_peak_leave = cp.max(reg_power_sum_profile + sch_power_sum_profile)
 
-        # first row of the u array is the 
-        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_sch, historical_peak ))* v[0]
-        
+        # current_peak_sch  = 10
+        # current_peak_reg = 10
+
+        # # first row of the u array is the 
+        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_sch, historical_peak))* v[0]
         J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_reg, historical_peak )) * v[1]
+
+        print("hist: ",historical_peak)
+        
         J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * historical_peak) * v[2]
 
         J = J0 + J1 + J2
@@ -616,3 +628,58 @@ class Optimization_station:
         station_info = self.station_info
 
         return station_info, opt
+    
+def main():
+
+    # We define the timesteps in the APP as 15 minute 
+    delta_t = 0.25 #hour 
+    print("For delta_t: ",delta_t, "max number of intervals:",24/delta_t)
+    ################## Define the TOU Cost ##########################################
+    ## the TOU cost is defined considering the delta_t above, if not code raises an error.##
+
+    # off-peak 0.175  cents / kwh 
+    TOU_tariff = np.ones((96,)) * 17.5
+    ## 4 pm - 9 pm peak 0.367 cents / kwh 
+    TOU_tariff[64:84] = 36.7
+    ## 9 am - 2 pm super off-peak 0.49 $ / kWh  to cents / kwh
+
+    TOU_tariff[36:56] = 14.9
+
+    par = opt.Parameters(z0 = np.array([25, 30, 1, 1]).reshape(4, 1),
+                            Ts = delta_t,
+                            eff = 1.0,
+                            soft_v_eta = 1e-4,
+                            opt_eps = 0.0001,
+                            TOU = TOU_tariff)
+
+
+    arrival_hour = 8
+    duration_hour = 4
+    e_need = 7.3
+
+    ### Yifei: Also do we define the event here or in the optimizer?
+    event = {
+        "time": int(arrival_hour / delta_t),
+        "e_need": e_need,
+        "duration": int(duration_hour / delta_t),
+        "station_pow_max": 6.6,
+        "user_power_rate": 6.6,
+        "limit_reg_with_sch": False,
+        "limit_sch_with_constant": False,
+        "sch_limit": 0,
+        "historical_peak":4
+    }
+
+    prb = opt.Problem(par=par, event=event)
+
+    # Yifei: The station object, here we assume no ongoing sessions. The form of this object is not decided yet. Dict or Class?
+    station_info = None
+
+    obj = opt.Optimization_station(par, prb, station_info, arrival_hour)
+    station, res = obj.run_opt()
+
+    reg_centsPerHr, sch_centsPerHr = res["reg_centsPerHr"], res['sch_centsPerHr']
+    print(reg_centsPerHr, sch_centsPerHr )
+
+if __name__ == "__main__":
+    main()
