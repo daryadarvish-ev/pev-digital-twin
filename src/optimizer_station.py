@@ -222,9 +222,11 @@ class Optimization_station:
         num_sch_user = len(self.station["SCH_list"]) + 1 # num of all SCH users
         e_delivered = cp.Variable(shape = ((self.var_dim_constant + 1) * num_sch_user, 1))
         u = cp.Variable(shape = (self.var_dim_constant * num_sch_user, 1))
+        p_demand_charge_sch = cp.Variable(shape = (1, 1))
+        p_demand_charge_reg = cp.Variable(shape = (1, 1))
 
         ### Objective Function
-        J, _ = self.constr_J(u, z, v)
+        
 
         ### Constraints (should incorporate all SCH users)
         constraints = [u >= 0]
@@ -260,12 +262,26 @@ class Optimization_station:
                 constraints += [e_delivered[j + e_start + 1] == e_delivered[j + e_start] + (float(eff) * delta_t * u[u_start + j])]
 
         ## Solve 
+        J, _ = self.constr_J(u, z, v, 
+                            p_demand_charge_sch, 
+                            p_demand_charge_reg)
+
+                 ## 2ND METHOD I TRIED
+        
+        constraints += [self.current_peak_sch <=p_demand_charge_sch]
+        constraints += [self.current_peak_reg <=p_demand_charge_reg]
+        constraints += [self.Problem.historical_peak <=p_demand_charge_sch]
+        constraints += [self.Problem.historical_peak <=p_demand_charge_reg]
+
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
         prob.solve()
 
-        return u.value, e_delivered.value
-    def constr_J(self, u, z, v):
+        return u.value, e_delivered.value, p_demand_charge_sch, p_demand_charge_reg
+
+    def constr_J(self, u, z, v, 
+                 p_demand_charge_sch, 
+                 p_demand_charge_reg):
 
         ### Read parameters for the new session
         N_reg = self.Problem.N_reg
@@ -337,12 +353,15 @@ class Optimization_station:
 
         current_peak_sch = cp.max(reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))
         print("sch_peak: ",current_peak_sch.shape )
-        print("pow_opt: ",cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T).shape)
+        print("sch_peak: ",current_peak_sch.shape )
         current_peak_reg =  cp.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
         print("reg_peak: ",current_peak_reg.shape )
 
-        
- 
+        print("hist: ",historical_peak)
+
+        self.current_peak_reg = current_peak_reg
+        self.current_peak_sch = current_peak_sch
+
         # # Dont need this: 
         # current_peak_leave = cp.max(reg_power_sum_profile + sch_power_sum_profile)
 
@@ -350,15 +369,20 @@ class Optimization_station:
         # current_peak_reg = 10
 
         # # first row of the u array is the 
-        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_sch, historical_peak))* v[0]
-        J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_reg, historical_peak )) * v[1]
-
-        print("hist: ",historical_peak)
-        
+        # J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_sch, historical_peak ))* v[0]
+        # J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_reg, historical_peak )) * v[1]
+        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * p_demand_charge_sch)* v[0]
+        J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * p_demand_charge_reg) * v[1]
         J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * historical_peak) * v[2]
 
         J = J0 + J1 + J2
-        J_array = np.array([J0.value, J1.value, J2.value])
+
+
+        try:
+            J_array = np.array([J0.value, J1.value, J2.value])
+        # Because there is no vehicle do optimize when LEAVE this is not an opt. variable its a deterministic value
+        except: 
+            J_array = np.array([J0.value, J1.value, J2])
 
         return J, J_array
     def run_opt(self):
@@ -492,7 +516,9 @@ class Optimization_station:
 
         while (count < itermax) & (improve >= 0) & (abs(improve) >= 0.00001):
 
-            _, J_array = self.constr_J(uk_flex, zk, vk)
+            _, J_array = self.constr_J(uk_flex, zk, vk, 
+                                       self.Problem.historical_peak,
+                                       self.Problem.historical_peak)
 
             Jk[count] = J_array.sum()
             J_sub[:, count] = J_array.reshape(3,)
@@ -501,7 +527,7 @@ class Optimization_station:
             v_iter[:, count] = vk.reshape((3,))
 
             try:
-                uk_flex, e_deliveredk_flex = self.argmin_u(zk, vk)
+                uk_flex, e_deliveredk_flex, p_dc_k_sch, p_dc_k_reg = self.argmin_u(zk, vk)
             except:
                 print('uk is not updated')
                 pass
@@ -518,7 +544,7 @@ class Optimization_station:
                 print("zk is not updated")
                 pass
 
-            _, J_array = self.constr_J(uk_flex, zk, vk)
+            _, J_array = self.constr_J(uk_flex, zk, vk, p_dc_k_sch, p_dc_k_reg)
             improve = Jk[count] - J_array.sum()
             # print(J_func(zk, uk_flex, vk))
             count += 1
