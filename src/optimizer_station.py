@@ -891,10 +891,10 @@ class Optimization_charger:
         """
         #############################################  Erase this part ##############################################
         # print("what is v", v)
-        if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
-            # print("what is v", v)
-            # print("NP sum V", np.sum(v), "\n self.parameters.sfotveta", self.Parameters.soft_v_eta)
-            raise ValueError('[ ERROR] invalid $v$')
+        # if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
+        #     # print("what is v", v)
+        #     # print("NP sum V", np.sum(v), "\n self.parameters.sfotveta", self.Parameters.soft_v_eta)
+        #     raise ValueError('[ ERROR] invalid $v$')
 
         ### Read parameters
         N_flex = self.Problem.N_flex

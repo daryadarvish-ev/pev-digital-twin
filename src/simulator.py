@@ -1,12 +1,11 @@
 import matplotlib.pyplot as plt
-import pandas as pd
 import seaborn as sns
 import simpy
 from matplotlib.pyplot import figure
 
 from optimizer_station import *
 from session_generator import *
-from simulation_choice_function import choice_function
+from simulation_choice_function import basic_choice_function
 
 warnings.filterwarnings('ignore')
 sns.set_theme()
@@ -17,7 +16,7 @@ class Simulator:
     This class hold the simulation ...
     """
 
-    def __init__(self):
+    def __init__(self, choice_func):
 
         # SIMULATION PARAMETERS
         self.NUM_DAYS = 10  # Arbitrarily changed this
@@ -85,7 +84,7 @@ class Simulator:
                        'B-Class Electric Drive', 'Model S 100 Dual', 'Mustang Mach-E', 'Model S 90 Dual',
                        'Bolt EUV 2LT']
 
-        self.station_df = pd.DataFrame()
+        self.choice_function = choice_func
 
         # poles
         self.MM = range(self.SIM_RUN_TIME)
@@ -246,16 +245,16 @@ class Simulator:
             N_asap, N_flex = (res['N_asap'], res['N_flex'])
 
             # Driver choice based on the tariff
-            choice = choice_function(asap_price, flex_price)
-            print("User's choice : ", choice[user - 1])
+            self.choice = self.choice_function(asap_price, flex_price)
+            print("User's choice : ", self.choice)
 
             start_ind = int(arrival_hour[user - 1] / delta_t)
-            if choice == 1:
-                total_revenue.append(asap_price * self.e_need[user - 1])
-                total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_asap], asap_power * 0.25).sum())
-            elif choice == 2:
-                total_revenue.append(flex_price * self.e_need[user - 1])
-                total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_flex], flex_power * 0.25).sum())
+            if self.choice == "Regular":
+                self.total_revenue.append(asap_price * self.e_need[user - 1])
+                self.total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_asap], asap_power * 0.25).sum())
+            elif self.choice == "Scheduled":
+                self.total_revenue.append(flex_price * self.e_need[user - 1])
+                self.total_cost.append(np.multiply(TOU_tariff[start_ind: start_ind + N_flex], flex_power * 0.25).sum())
 
             self._check_pole(event['arrivalMinGlobal'], event['departureMinGlobal'])
 
@@ -263,13 +262,19 @@ class Simulator:
                 zip(self.arrival_day, self.e_need, self.z_flex, self.z_asap, self.z_leave, self.flex_tarrif,
                     self.asap_tarrif,
                     self.v_flex, self.v_asap, self.v_leave, self.prob_flex, self.prob_asap, self.prob_leave,
-                    self.car_type, self.occupied_pole_num, self.choice)),
-                columns=['arrival_day', 'self.e_need', 'z_flex', 'z_asap', 'z_leave', 'flex_tarrif',
+                    self.car_type, self.occupied_pole_num, [self.choice])),
+                columns=['arrival_day', 'e_need', 'z_flex', 'z_asap', 'z_leave', 'flex_tarrif',
                          'asap_tarrif', 'v_flex', 'v_asap', 'v_leave', 'prob_flex', 'prob_asap',
-                         'prob_leave', 'car_type', 'self.occupied_pole_num', 'Choice'])
+                         'prob_leave', 'car_type', 'occupied_pole_num', 'choice'])
+            print(self.arrival_day, self.e_need, self.z_flex, self.z_asap, self.z_leave, self.flex_tarrif,
+                  self.asap_tarrif,
+                  self.v_flex, self.v_asap, self.v_leave, self.prob_flex, self.prob_asap, self.prob_leave,
+                  self.car_type, self.occupied_pole_num, [self.choice])
 
             # Daily user Flex & Scheduled List
-            self._asap_schedule_list(user, station, asap_price, flex_price)
+
+            ## Todo uncomment when fixed
+            # self._asap_schedule_list(user, station, asap_price, flex_price)
             print('the current stat of station', station)
 
             print(" ############################# End of iteration #############################")
@@ -278,9 +283,9 @@ class Simulator:
             # rates output
             charge_time = 30 * round(stay_duration / 30)
             # flex rate requested output
-            rate_flex.append(flex_price)
+            self.rate_flex.append(flex_price)
             # asap rate requested output
-            rate_asap.append(asap_price)
+            self.rate_asap.append(asap_price)
 
             # terminal segment
             if env.now >= run_time - 30:
@@ -307,9 +312,9 @@ class Simulator:
                 choice = ['Flex', 'ASAP', 'Leave', 'Leave\n(occupied)']
                 frequency = [num_flex, num_asap, num_leave_imm, num_leave_occ]
                 ax.bar(choice, frequency)
-                plt.xlabel("Agent Choice")  # add X-axis label
+                plt.xlabel("Agent choice")  # add X-axis label
                 plt.ylabel("Frequency of choice")  # add Y-axis label
-                plt.title("Agent Choice vs Frequency")
+                plt.title("Agent choice vs Frequency")
                 # plt.rcParams["figure.autolayout"] = True
                 # wrap_labels(ax, 500)
                 # ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
@@ -321,7 +326,7 @@ class Simulator:
                 # yield env.timeout(random.randint(30,self.CAR_ARR_TIME)) # random interval for next arrival
                 yield env.timeout(input_df['arrivalMinGlobal'][user] - input_df['arrivalMinGlobal'][user - 1])
 
-        return [session]
+        return [self.session]
 
     def _check_pole(self, arrivalMinGlobal, departureMinGlobal):
 
@@ -346,25 +351,27 @@ class Simulator:
 
     def _asap_schedule_list(self, user, station, asap_price, flex_price):
 
+        ## Todo fix this function
+
         total_day = 10
+        print(self.station_df.head(), user)
 
         for day in range(total_day):
-
             if self.station_df['arrival_day'][user - 1] == day:
                 if user == 1:
                     day_temp = 0
                 else:
                     day_temp = self.station_df['arrival_day'][user - 1]
 
-                if self.station_df['Choice'][user - 1] == 'Regular':
+                if self.station_df['choice'][user - 1] == 'Regular':
                     self.temp_asap.append('EV' + str(user))
                     station["EV" + str(user)].price = asap_price
                     # temp_price.append(asap_price)
-                elif self.station_df['Choice'][user - 1] == 'Scheduled':
+                elif self.station_df['choice'][user - 1] == 'Scheduled':
                     self.temp_scheduled.append('EV' + str(user))
                     station["EV" + str(user)].price = flex_price
                     # temp_price.append(flex_price)
-                elif self.station_df['Choice'][user - 1] == 'Leave':
+                elif self.station_df['choice'][user - 1] == 'Leave':
                     self.temp_leave.append('EV' + str(user))
                     # station["EV" + str(user)].price  # arbitrary number for the leave price
                     # temp_price.append('700000')

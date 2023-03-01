@@ -180,4 +180,3 @@ class SessionGen:
         print(input_df.shape)
         
         return input_df
-    
