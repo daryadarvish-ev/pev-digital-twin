@@ -1,18 +1,12 @@
 import random
-global Choice
-Choice = []
 
-def choice_function(asap_price, flex_price):
-    # choose lower price
+
+def basic_choice_function(asap_price, flex_price):
+    """Basic choice function which chooses the lowest price"""
+
     if random.uniform(0, 1) > 0.9:
-        choice = 3
-        Choice.append("Leave")
-        return Choice
+        return "Leave"
     if asap_price > flex_price:
-        choice = 1
-        Choice.append("Scheduled")
-        return Choice
+        return "Scheduled"
     else:
-        choice = 2
-        Choice.append("Regular")
-        return Choice
+        return "Regular"
