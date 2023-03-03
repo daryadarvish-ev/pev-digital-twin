@@ -20,7 +20,7 @@ class Parameters:
                 soft_v_eta = 1e-4, # For convex relaxation in constraints.
                 opt_eps = 0.0001, 
                 TOU = np.ones((96,)),
-                demand_charge_cost = 0): # Time-of-user charging tariff: 96 intervals, 1 day.
+                demand_charge_cost = 18): # Time-of-user charging tariff: 96 intervals, 1 day.
 
         # TOU Tariff in cents / kwh
         # TOU * power rate = cents  / hour
@@ -108,7 +108,7 @@ class Optimization_station:
         self.opt_tariff_overstay = None
         self.station_info = copy.deepcopy(station_info) if station_info else None # "station" ndarray.
         self.k = k # Current global time indices(hour unit, for example 1.0, 1.25, 1.5, 1.75, 2.0...)
-    def argmin_v(self, u, z):
+    def argmin_v(self, u, z, p_dc_sch, p_dc_reg):
         """
         Parameters 
         Decision Variables: 
@@ -122,7 +122,7 @@ class Optimization_station:
         v = cp.Variable(shape = (3), pos = True)
 
         ### Objective Function
-        J, J_array = self.constr_J(u, z, v)
+        J, J_array,_,_ = self.constr_J(u, z, v, p_dc_sch, p_dc_reg)
         ### Log sum function conjugate: negative entropy 
         # lse_conj = - cp.sum(cp.entr(v))
         # func = v.T @ (THETA @ z)
@@ -141,7 +141,7 @@ class Optimization_station:
         prob.solve()
 
         return np.round(v.value, 4)
-    def argmin_z(self, u, v):
+    def argmin_z(self, u, v, p_dc_sch, p_dc_reg):
         """
         Function to determine prices 
 
@@ -171,7 +171,7 @@ class Optimization_station:
         z = cp.Variable(shape = (4), pos = True)
 
         ### Objective Function
-        J, _ = self.constr_J(u, z, v)
+        J, _ , _,_= self.constr_J(u, z, v, p_dc_sch, p_dc_reg)
 
         ### Constraints
         constraints = [z[3] == 1]
@@ -215,13 +215,17 @@ class Optimization_station:
         """
 
         ### Read parameters
+
         eff = 1
         delta_t = self.Parameters.Ts
+        historical_peak = self.Problem.historical_peak
 
         ### Decision Variables
         num_sch_user = len(self.station["SCH_list"]) + 1 # num of all SCH users
         e_delivered = cp.Variable(shape = ((self.var_dim_constant + 1) * num_sch_user, 1))
         u = cp.Variable(shape = (self.var_dim_constant * num_sch_user, 1))
+        p_dc_sch = cp.Variable(shape = 1)
+        p_dc_reg = cp.Variable(shape = 1)
         # p_demand_charge_sch = cp.Variable(shape = (1, 1))
         # p_demand_charge_reg = cp.Variable(shape = (1, 1))
 
@@ -255,6 +259,8 @@ class Optimization_station:
             constraints += [e_delivered[e_start] == 0]
             constraints += [e_delivered[e_end] >= e_need]
             constraints += [e_delivered[e_start: e_max+1] <= e_need]
+
+
             # Implication: e_end = e_need.
 
             # Charging dynamics within each user
@@ -262,22 +268,22 @@ class Optimization_station:
                 constraints += [e_delivered[j + e_start + 1] == e_delivered[j + e_start] + (float(eff) * delta_t * u[u_start + j])]
 
         ## Solve 
-        J, _ = self.constr_J(u, z, v)
+        J, _, current_peak_sch, current_peak_reg= self.constr_J(u, z, v, p_dc_sch, p_dc_reg)
 
-                 ## 2ND METHOD I TRIED
-        
-        # constraints += [self.current_peak_sch <=p_demand_charge_sch]
-        # constraints += [self.current_peak_reg <=p_demand_charge_reg]
-        # constraints += [self.Problem.historical_peak <=p_demand_charge_sch]
-        # constraints += [self.Problem.historical_peak <=p_demand_charge_reg]
+        # Demand charge constraints
+        constraints += [historical_peak <= p_dc_sch]
+        constraints += [historical_peak <= p_dc_reg]
+        constraints += [current_peak_sch <= p_dc_sch]
+        constraints += [current_peak_reg <= p_dc_reg]
+
 
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
         prob.solve()
 
-        return u.value, e_delivered.value
+        return u.value, e_delivered.value, p_dc_sch.value, p_dc_reg.value
 
-    def constr_J(self, u, z, v):
+    def constr_J(self, u, z, v, p_dc_sch, p_dc_reg):
 
         ### Read parameters for the new session
         N_reg = self.Problem.N_reg
@@ -347,39 +353,28 @@ class Optimization_station:
         new_reg_obj = new_reg_obj.flatten()[0]
     
 
-        # current_peak_sch = cp.max(reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))
-        # # print("sch_peak: ",current_peak_sch.shape )
-        # # print("sch_peak: ",current_peak_sch.shape )
-        # current_peak_reg =  cp.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
+        current_peak_sch = cp.max(reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))
+        current_peak_reg =  cp.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
         # print("reg_peak: ",current_peak_reg.shape )
 
-        # print("hist: ",historical_peak)
-
-        # self.current_peak_reg = current_peak_reg
-        # self.current_peak_sch = current_peak_sch
-
-        # # Dont need this: 
-        # current_peak_leave = cp.max(reg_power_sum_profile + sch_power_sum_profile)
-
-        # current_peak_sch  = 10
-        # current_peak_reg = 10
-
         # # first row of the u array is the 
-        # J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_sch, historical_peak ))* v[0]
-        # J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(current_peak_reg, historical_peak )) * v[1]
+        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * p_dc_sch)* v[0]
+        J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * p_dc_reg) * v[1]
+        J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * historical_peak) * v[2]
+
         # J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * p_demand_charge_sch)* v[0]
         # J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * p_demand_charge_reg) * v[1]
 
         # J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * current_peak_sch)* v[0]
         # J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * current_peak_reg) * v[1]
-        # J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * historical_peak) * v[2]
+        # J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * current_peak_leave) * v[2]
 
-        J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
-            reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))) * v[0]
-        J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
-            reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)) * v[1]
-        J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
-            reg_power_sum_profile + sch_power_sum_profile)) * v[2]
+        # J0 = (new_sch_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
+        #     reg_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_sch)).T, axis=0))) * v[0]
+        # J1 = (new_reg_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
+        #     reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)) * v[1]
+        # J2 = (new_leave_obj + existing_sch_obj + existing_reg_obj + self.Parameters.cost_dc * cp.max(
+        #     reg_power_sum_profile + sch_power_sum_profile)) * v[2]
 
         J = J0 + J1 + J2
 
@@ -390,7 +385,7 @@ class Optimization_station:
         except: 
             J_array = np.array([J0.value, J1.value, J2])
 
-        return J, J_array
+        return J, J_array, current_peak_sch, current_peak_reg
     def run_opt(self):
         ### This is the main optimization function (multi-convex principal problem)
         ### station_info: a copy of the state dictionary. The re-optimized profiles will be passed in this dictionary.
@@ -477,37 +472,41 @@ class Optimization_station:
         var_dim_constant = int(max(N_remain_all)) # maximum remaining duration of all users
         self.var_dim_constant = var_dim_constant
 
-        # Initial values for decision variable U: Shape: (all possible SCH users * dimension_constant, 1)
-        uk_flex = self.Problem.power_rate * np.zeros([var_dim_constant * (num_sch_user + 1), 1])
 
-        def charging_revenue(z, u):
-
-            # I did not modify or use this function in station-level opt. If you want to leverage it, please check the formulations.
-            N_reg = self.Problem.N_reg
-            TOU = self.Problem.TOU
-            station_pow_max = self.Problem.power_rate
-
-            delta_t = self.Parameters.Ts 
-
-            f_flex = u.T @ (z[0]- TOU) * delta_t
-            ## u : kW , z: cents / kWh, TOU : cents / kWh , delta_t : 1 \ h
-            # f_asap = np.sum(station_pow_max * (z[1] - TOU[:N_reg])) * delta_t 
-
-            N_reg_remainder  = self.Problem.N_reg_remainder 
-            
-            if N_reg_remainder > 0:
-                f_asap = (np.sum(station_pow_max * (TOU[:N_reg - 1] - z[1])) + (station_pow_max * N_reg_remainder) * (TOU[N_reg - 1] - z[1]) )* delta_t 
-                
-            else: 
-                f_asap = np.sum(station_pow_max * (TOU[:N_reg ] - z[1])) * delta_t
-
-            return f_flex, f_asap
+        # def charging_revenue(z, u):
+        #
+        #     # I did not modify or use this function in station-level opt. If you want to leverage it, please check the formulations.
+        #     N_reg = self.Problem.N_reg
+        #     TOU = self.Problem.TOU
+        #     station_pow_max = self.Problem.power_rate
+        #
+        #     delta_t = self.Parameters.Ts
+        #
+        #     f_flex = u.T @ (z[0]- TOU) * delta_t
+        #     ## u : kW , z: cents / kWh, TOU : cents / kWh , delta_t : 1 \ h
+        #     # f_asap = np.sum(station_pow_max * (z[1] - TOU[:N_reg])) * delta_t
+        #
+        #     N_reg_remainder  = self.Problem.N_reg_remainder
+        #
+        #     if N_reg_remainder > 0:
+        #         f_asap = (np.sum(station_pow_max * (TOU[:N_reg - 1] - z[1])) + (station_pow_max * N_reg_remainder) * (TOU[N_reg - 1] - z[1]) )* delta_t
+        #
+        #     else:
+        #         f_asap = np.sum(station_pow_max * (TOU[:N_reg ] - z[1])) * delta_t
+        #
+        #     return f_flex, f_asap
 
         # Iteration information
 
         itermax = 1000
         count = 0
         improve = np.inf
+
+        # Initial values for decision variable U: Shape: (all possible SCH users * dimension_constant, 1)
+        uk_flex = self.Problem.power_rate * np.zeros([var_dim_constant * (num_sch_user + 1), 1])
+
+        p_dc_sch_k = self.Problem.historical_peak
+        p_dc_reg_k = self.Problem.historical_peak
 
         zk = self.Parameters.z0
         vk = self.Parameters.v0
@@ -522,7 +521,7 @@ class Optimization_station:
 
         while (count < itermax) & (improve >= 0) & (abs(improve) >= 0.00001):
 
-            _, J_array = self.constr_J(uk_flex, zk, vk)
+            _, J_array,_,_ = self.constr_J(uk_flex, zk, vk, p_dc_sch_k,p_dc_reg_k)
 
             Jk[count] = J_array.sum()
             J_sub[:, count] = J_array.reshape(3,)
@@ -531,24 +530,24 @@ class Optimization_station:
             v_iter[:, count] = vk.reshape((3,))
 
             # try:
-            uk_flex, e_deliveredk_flex, p_dc_k_sch, p_dc_k_reg = self.argmin_u(zk, vk)
+            uk_flex, e_deliveredk_flex, p_dc_sch_k, p_dc_reg_k = self.argmin_u(zk, vk)
             # except:
                 # print('uk is not updated')
                 # pass
 
             try:
-                vk = self.argmin_v(uk_flex, zk)
+                vk = self.argmin_v(uk_flex, zk, p_dc_sch_k, p_dc_reg_k)
             except:
                 print('vk is not updated')
                 pass
 
             try:
-                zk = self.argmin_z(uk_flex, vk)
+                zk = self.argmin_z(uk_flex, vk, p_dc_sch_k, p_dc_reg_k)
             except:
                 print("zk is not updated")
                 pass
 
-            _, J_array = self.constr_J(uk_flex, zk, vk)
+            _, J_array,_,_= self.constr_J(uk_flex, zk, vk, p_dc_sch_k, p_dc_reg_k)
             improve = Jk[count] - J_array.sum()
             # print(J_func(zk, uk_flex, vk))
             count += 1
@@ -611,7 +610,10 @@ class Optimization_station:
 
         # Part 2: Power Profiles
         opt["power_rate"] = self.Problem.power_rate
-        opt["peak_pow"] = max(uk_flex)
+
+        opt['new_peak_sch'] = p_dc_sch_k
+        opt['new_peak_reg'] = p_dc_reg_k
+
         opt["sch_e_delivered"] = e_deliveredk_flex
         N_remain = int(self.Problem.user_duration)
         opt["sch_powers"] = uk_flex[: N_remain]
@@ -650,6 +652,7 @@ class Optimization_station:
         opt["time_end_SCH"] = self.Problem.user_time + self.Problem.user_duration
         opt["time_end_REG"] = self.Problem.user_time + self.Problem.N_reg
 
+
         # Part 4: General Problem Space
         opt["prb"] = self.Problem
         opt["par"] = self.Parameters
@@ -675,12 +678,15 @@ def main():
 
     TOU_tariff[36:56] = 14.9
 
-    par = opt.Parameters(z0 = np.array([25, 30, 1, 1]).reshape(4, 1),
+    par = Parameters(z0 = np.array([25, 30, 1, 1]).reshape(4, 1),
                             Ts = delta_t,
                             eff = 1.0,
                             soft_v_eta = 1e-4,
                             opt_eps = 0.0001,
-                            TOU = TOU_tariff)
+                            TOU = TOU_tariff,
+                            demand_charge_cost=1800/30,
+
+                     )
 
 
     arrival_hour = 8
@@ -700,16 +706,16 @@ def main():
         "historical_peak":4
     }
 
-    prb = opt.Problem(par=par, event=event)
+    prb = Problem(par=par, event=event)
 
     # Yifei: The station object, here we assume no ongoing sessions. The form of this object is not decided yet. Dict or Class?
     station_info = None
 
-    obj = opt.Optimization_station(par, prb, station_info, arrival_hour)
+    obj = Optimization_station(par, prb, station_info, arrival_hour)
     station, res = obj.run_opt()
 
     reg_centsPerHr, sch_centsPerHr = res["reg_centsPerHr"], res['sch_centsPerHr']
-    print(reg_centsPerHr, sch_centsPerHr )
+    print(sch_centsPerHr,reg_centsPerHr)
 
 if __name__ == "__main__":
     main()
