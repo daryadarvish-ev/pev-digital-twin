@@ -660,23 +660,54 @@ def generateOptPricePowerFromDummyInput(expectedDemand, optTime):
     States, expectedDemand = generateOptPricePower(stateRecords, expectedDemand, optTime, arrival_hour)
         
     return States, expectedDemand
-    
 
-def generateOptPricePower(stateRecords, 
+
+from collections import defaultdict
+
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
+def recover_json_serialized_power_array(json_serialized_item):
+    return np.asarray(json_serialized_item)
+
+
+def generateOptPricePowerFromDummyInput(expectedDemand, optTime):
+    unixOptTime = unixTime(optTime)
+    arrival_hour = optTime.hour
+
+    # We only take the next 4 hours of the price table
+
+    ## read the stateRecords last entry
+    stateRecords = dummyStateRecord()
+
+    try:
+        expected_demand.set_index(['arrHour', 'highPower'], inplace=True)
+    except KeyError:
+        print("")
+
+    States, expectedDemand = generateOptPricePower(stateRecords, expectedDemand, optTime, arrival_hour)
+
+    return States, expectedDemand
+
+
+def generateOptPricePower(stateRecords,
                           expectedDemand,
-                          optTime, 
+                          optTime,
                           arrival_hour):
-
     States = defaultdict(dict)
     optHours = arrHourList(arrival_hour, optHorizon=4)
 
     ## read the expected demand table
-    for highPower in [0,1]:
+    for highPower in [0, 1]:
         for hour in optHours:
-
             ## Here we are converting the optimization time to the arrival time
             hr = optTime.hour
-            minute =  optTime.minute / 60
+            minute = optTime.minute / 60
 
             arrival_time = hr + minute
             duration_hour = expected_demand.loc[(hour, highPower), 'estDurationHrs']
@@ -685,7 +716,7 @@ def generateOptPricePower(stateRecords,
             ### How do duration_hour and e_need update after each re-optimization?
 
             event = {
-                "time": int(hour / delta_t), # Hour or Arrival_hour?
+                "time": int(hour / delta_t),  # Hour or Arrival_hour?
                 "e_need": e_need,
                 "duration": int(duration_hour / delta_t),
                 "station_pow_max": 6.6,
@@ -693,43 +724,50 @@ def generateOptPricePower(stateRecords,
                 "limit_reg_with_sch": False,
                 "limit_sch_with_constant": False,
                 "sch_limit": 0,
-                "historical_peak":10
+                "historical_peak": 10
             }
             stateRecord = data_format_convertion(stateRecords, hour, delta_t)
-            par = opt.Parameters(z0 = np.array([30, 30, 1, 1]).reshape(4, 1),
-                         Ts = delta_t,
-                         eff = 1.0,
-                         soft_v_eta = 1e-4,
-                         opt_eps = 0.0001,
-                         TOU = TOU_tariff,
-                         demand_charge_cost=12)
+            par = opt.Parameters(z0=np.array([30, 30, 1, 1]).reshape(4, 1),
+                                 Ts=delta_t,
+                                 eff=1.0,
+                                 soft_v_eta=1e-4,
+                                 opt_eps=0.0001,
+                                 TOU=TOU_tariff,
+                                 demand_charge_cost=12)
             prb = opt.Problem(par=par, event=event)
 
             obj = opt.Optimization_station(par, prb, stateRecord, hour)
             station_info, res = obj.run_opt()
 
-            # One of the indexes power level 
-            # index hierarchy: hour -> powerLevel -> SCH 
+            # One of the indexes power level
+            # index hierarchy: hour -> powerLevel -> SCH
             # json.dumps(States['hour8']['SCH'])
-            States["hour" + str(hour)]["SCH"] = convertOutput(stateRecords, station_info, res, hour, "SCH")
-            States["hour" + str(hour)]["REG"] = convertOutput(stateRecords, station_info, res, hour, "REG")
+            States["hour" + str(hour) + "-" + str(highPower)]["SCH"] = convertOutput(stateRecords, station_info, res,
+                                                                                     hour, "SCH")
+            States["hour" + str(hour) + "-" + str(highPower)]["REG"] = convertOutput(stateRecords, station_info, res,
+                                                                                     hour, "REG")
 
             ### Heyy so this is for US to be able to test. We won't do this type of output in the server
             # However we will send the Right hand side of the below lines.
             # RHS should be a state record, in the server it will be indexed by hour and power and choice
-            expected_demand.loc[(hour, highPower), 'SCH_expected_power_W']= json.dumps(States["hour" + str(hour)]['SCH'], 
-                                                                                 cls=NumpyEncoder)
+            expected_demand.loc[(hour, highPower), 'SCH_expected_power_W'] = json.dumps(
+                States["hour" + str(hour) + "-" + str(highPower)]['SCH'],
+                cls=NumpyEncoder)
 
-            expected_demand.loc[(hour, highPower), 'REG_expected_power_W']= json.dumps(States["hour" + str(hour)]['REG'], 
-                                                                                 cls=NumpyEncoder)
+            expected_demand.loc[(hour, highPower), 'REG_expected_power_W'] = json.dumps(
+                States["hour" + str(hour) + "-" + str(highPower)]['REG'],
+                cls=NumpyEncoder)
 
             ### How do we update the expected demand table? Make a slice for 4 hours or take the whole?
             reg_centsPerHr, sch_centsPerHr = res["reg_centsPerHr"], res['sch_centsPerHr']
             expected_demand.loc[(hour, highPower), 'sch_centsPerHr'] = sch_centsPerHr
             expected_demand.loc[(hour, highPower), 'reg_centsPerHr'] = reg_centsPerHr
 
-
     return States, expectedDemand
+
+
+States, expected_demand = generateOptPricePowerFromDummyInput(expected_demand,
+                                                              optTime=pd.Timestamp(2023, 3, 6, 8, 0, 0))
 
 # States, expected_demand = generateOptPricePowerFromDummyInput(expected_demand,
 #                                           optTime = pd.Timestamp(2023, 3, 6, 8, 0, 0))
