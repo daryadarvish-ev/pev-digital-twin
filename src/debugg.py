@@ -610,13 +610,13 @@ def powerOutput(res, user_choice):
     start_timestamp = res["time_start"] * delta_t
     start_timestamp_hour = int(start_timestamp)
     start_timestamp_minute = int((start_timestamp % 1) * 60)
-    start_time = datetime.datetime(2023, 2, 7, start_timestamp_hour, start_timestamp_minute, 0)
+    start_time = datetime.datetime(2023, 3, 6, start_timestamp_hour, start_timestamp_minute, 0)
     t0 = unixTime(start_time)
 
     end_timestamp = res["time_end_SCH"] * delta_t if user_choice == "SCH" else res["time_end_REG"] * delta_t
     end_timestamp_hour = int(end_timestamp)
     end_timestamp_minute = int((end_timestamp % 1) * 60)
-    end_time = datetime.datetime(2023, 2, 7, end_timestamp_hour, end_timestamp_minute, 0)
+    end_time = datetime.datetime(2023, 3, 6, end_timestamp_hour, end_timestamp_minute, 0)
     t1 = unixTime(end_time)
 
     timestamps = np.arange(t0, t1, delta_t * 60 * 60).astype(int)   # In seconds, for example, 0.25 * 60 = 15min in seconds
@@ -867,7 +867,7 @@ for row in subset.index[:1]:
 
     for session in new_State['sessions']:
         if session['dcosId'] == 'dummyUser':
-            session['dcosId'] = new_session_id
+            session['dcosId'] = str(new_session_id)
 
         if session['deadline'] <= unixTime(new_session_start):
             print(pd.to_datetime(session['deadline'])," <= ",unixTime(new_session_start))

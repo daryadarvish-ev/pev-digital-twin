@@ -464,7 +464,7 @@ class Optimization_station:
 
         ### New User information & All SCH users info (existing_user_info)
         if self.station_info:
-            N_remain_all = [user["N_remain"] for user in station_info if user["choice"] == "SCH"]
+            N_remain_all = [user["N_remain"] for user in station_info]
         else:
             N_remain_all = []
         N_remain_all.append(self.Problem.N_sch)
