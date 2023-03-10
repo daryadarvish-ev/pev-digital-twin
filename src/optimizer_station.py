@@ -592,8 +592,10 @@ class Optimization_station:
         reg_new_user_profile[: self.Problem.N_reg - 1] = self.Problem.power_rate
         reg_new_user_profile[self.Problem.N_reg - 1] = (self.Problem.power_rate * self.Problem.N_reg_remainder) if self.Problem.N_reg_remainder > 0 else self.Problem.power_rate
 
-        sch_max = np.max(reg_power_sum_profile + np.sum(uk_flex.reshape(num_sch, self.var_dim_constant), axis=0))
-        reg_max = np.max(reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile)
+        sch_agg = reg_power_sum_profile + np.sum(uk_flex.reshape(num_sch, self.var_dim_constant), axis=0)
+        reg_agg = reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile
+        sch_max = np.max(sch_agg)
+        reg_max = np.max(reg_agg)
 
         ### Output the results
         opt = dict()
@@ -610,6 +612,8 @@ class Optimization_station:
 
         # Part 2: Power Profiles
         opt["power_rate"] = self.Problem.power_rate
+
+        ### 'new_peak_sch': max(sch_max, historical_peak)
 
         opt['new_peak_sch'] = p_dc_sch_k
         opt['new_peak_reg'] = p_dc_reg_k
@@ -631,6 +635,8 @@ class Optimization_station:
 
         opt["sch_max"] = sch_max
         opt["reg_max"] = reg_max
+        opt["sch_agg"] = sch_agg
+        opt["reg_agg"] = reg_agg
 
         # Part 3: Probability & Iteration Parameters Output
 
@@ -651,6 +657,7 @@ class Optimization_station:
         opt["time_start"] = self.Problem.user_time
         opt["time_end_SCH"] = self.Problem.user_time + self.Problem.user_duration
         opt["time_end_REG"] = self.Problem.user_time + self.Problem.N_reg
+        opt["time_max"] = self.Problem.user_time + self.var_dim_constant
 
 
         # Part 4: General Problem Space
