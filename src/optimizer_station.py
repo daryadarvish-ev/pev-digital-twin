@@ -87,7 +87,7 @@ class Problem:
             self.user_duration = self.N_sch
             self.assertion_flag = 1
 
-        if len(par.TOU) < self.user_time + self.user_duration: # if there is overnight chaarging
+        if len(par.TOU) < self.user_time + self.user_duration: # if there is overnight charging
             par.TOU = np.concatenate([par.TOU,par.TOU])
         self.TOU = par.TOU[self.user_time:(self.user_time + self.user_duration)]
 
@@ -597,11 +597,20 @@ class Optimization_station:
         sch_max = np.max(sch_agg)
         reg_max = np.max(reg_agg)
 
+        # Calculate the utility cost: TOU * power + DC_cost * peak_power(cents/kWh * kW * intervals)
+
+        TOU_all = self.Parameters.TOU
+        if len(self.Parameters.TOU) < self.Problem.user_time + self.var_dim_constant: # if there is overnight charging
+            TOU_all = np.concatenate([self.Parameters.TOU, self.Parameters.TOU])
+        TOU_all = TOU_all[self.Problem.user_time:(self.Problem.user_time + self.var_dim_constant)].reshape(-1, 1)
+        utility_cost_sch = np.sum(TOU_all.T @ sch_agg.reshape(-1, 1)) *  + self.Parameters.cost_dc * p_dc_sch_k[0]
+        utility_cost_reg = np.sum(TOU_all.T @ reg_agg.reshape(-1, 1)) + self.Parameters.cost_dc * p_dc_reg_k[0]
+
         ### Output the results
         opt = dict()
         opt['e_need'] = self.Problem.e_need
 
-        # Part 1: Prices
+        # Part 1: Prices & Utility Cost
         opt["z"] = zk
         opt["z_hr"] = zk * self.Problem.power_rate
         # cents / kwh and cents / hour
@@ -609,6 +618,9 @@ class Optimization_station:
         opt["tariff_reg"] = zk[1]
         opt["sch_centsPerHr"] = opt["z_hr"][0]
         opt["reg_centsPerHr"] = opt["z_hr"][1]
+
+        opt["utility_cost_sch"] = utility_cost_sch
+        opt["utility_cost_reg"] = utility_cost_reg
 
         # Part 2: Power Profiles
         opt["power_rate"] = self.Problem.power_rate
