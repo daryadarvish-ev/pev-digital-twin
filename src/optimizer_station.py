@@ -292,7 +292,7 @@ class Optimization_station:
         power_rate = self.Problem.power_rate
         N_reg_remainder = self.Problem.N_reg_remainder
         delta_t = self.Parameters.Ts
-        historical_peak  = self.Problem.historical_peak 
+        historical_peak = self.Problem.historical_peak
 
         ### Retrieve parameters for existing users
         existing_sch_obj = 0
@@ -404,23 +404,12 @@ class Optimization_station:
                     station["REG_list"].append(user["dcosId"])
                 elif user["choice"] == "SCH":
                     station["SCH_list"].append(user["dcosId"])
+                if user["start_time"] > self.k: # Overnight charging
+                    self.k += 24
+                    self.Problem.user_time += int(24 / self.Parameters.Ts)
+                    TOU_all = np.concatenate([self.Parameters.TOU, self.Parameters.TOU])
+                    self.Problem.TOU = TOU_all[self.Problem.user_time:(self.Problem.user_time + self.Problem.user_duration)]
 
-        # Remove finished users
-        # We first check if the users in "SCH_list" are still in the station.(N_remain > 0?)
-
-        # user_keys = station['SCH_list'].copy()
-        # if user_keys:
-        #     for user_key in user_keys:
-        #         user = [d for d in station_info if d["dcosId"] == user_key][0]
-        #         start_time = user["start_time"] / self.Parameters.Ts
-        #         end_time = user["end_time"] / self.Parameters.Ts
-        #         TOU_idx = int(self.k / self.Parameters.Ts - start_time)
-        #         N_remain = int(end_time - self.k / self.Parameters.Ts) # Number of intervals left for the existing users
-        #         e_needed_now = user["energyNeeded"] - np.sum(user["optPower"][: TOU_idx] * self.Parameters.eff * self.Parameters.Ts)
-        #         if N_remain <= 1e-5 or e_needed_now <= 1e-5: # If all flex intervals expire or the energy demand is met, remove the user
-        #             station["SCH_list"].remove(user_key)
-
-        # If they are still in the station, update the remaining energy needed for their following intervals(N_remain).
 
         # Update existing user info(e_needed), transform the input dict to internal nparray
         user_keys = station['SCH_list']

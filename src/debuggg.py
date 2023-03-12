@@ -281,12 +281,13 @@ def arrHourList(arrHour, optHorizon):
     """ arrHour, int: current optimization hour
         optHorizon, int: how long to optimize in hours """ 
     if arrHour <= (24-optHorizon):
-        overnight = False
+        overnight = [False for _ in range(optHorizon)]
         return list(range(arrHour,(arrHour+optHorizon))), overnight
     else: 
         lst = list(range(arrHour,24))
+        overnight = [False for _ in range(24-arrHour)]
         lst.extend(list(range(0 , ((arrHour+optHorizon)-24) )))
-        overnight = True
+        overnight.extend([True for _ in range((arrHour+optHorizon)-24)])
         ## Overnight charging: like [23, 0, 1, 2]
 
         return lst, overnight
@@ -297,7 +298,7 @@ def arrHourList(arrHour, optHorizon):
 # %%
 import datetime
 import copy
-def data_format_convertion(stateRecords, opt_hour, delta_t):
+def data_format_convertion(stateRecords, opt_hour, delta_t, overnight_label, optTime):
     timezone = datetime.timezone(datetime.timedelta(hours=0))
     stateRecord = copy.deepcopy(stateRecords[0]["sessions"])
     if not stateRecord:
@@ -317,7 +318,17 @@ def data_format_convertion(stateRecords, opt_hour, delta_t):
 
         end_time_obj = datetime.datetime.fromtimestamp(int(user["optPower"][-1][0]), timezone) # Or retrieve the last time slot??
         user["end_time"] = float(end_time_obj.hour + end_time_obj.minute / 60) + delta_t
-        if user["end_time"] <= opt_hour:
+        # unix end time: int(user["optPower"][-1][0]) + 60 * 60 * delta_t
+        unix_end_time = int(user["optPower"][-1][0] + 60 * 60 * delta_t)
+        opt_time = optTime
+        if overnight_label:
+            opt_time += datetime.timedelta(days=1)
+            opt_time = opt_time.replace(hour=opt_hour, minute=0, second=0, microsecond=0)
+        else:
+            opt_time = opt_time.replace(hour=opt_hour, minute=0, second=0, microsecond=0)
+        unix_opt_time = unixTime(opt_time)
+
+        if unix_end_time <= unix_opt_time:
             continue
 
         user["optPower"] = np.round(np.array([x[1] for x in user["optPower"]]) / 1000, 2)
@@ -470,7 +481,7 @@ def generateOptPricePower(stateRecords,
 
     ## read the expected demand table
     for highPower in [0,1]:
-        for hour in optHours:
+        for i, hour in enumerate(optHours):
 
             ## Here we are converting the optimization time to the arrival time
             hr = optTime.hour
@@ -492,7 +503,7 @@ def generateOptPricePower(stateRecords,
                 "historical_peak": 10
             }
 
-            stateRecord = data_format_convertion(stateRecords, hour, delta_t)
+            stateRecord = data_format_convertion(stateRecords, hour, delta_t, overnight[i], optTime)
             par = opt.Parameters(z0 = np.array([30, 30, 1, 1]).reshape(4, 1),
                          Ts = delta_t,
                          eff = 1.0,
@@ -528,9 +539,6 @@ def generateOptPricePower(stateRecords,
 
 
     return States, expectedDemand
-
-States, expected_demand = generateOptPricePowerFromDummyInput(expected_demand, 
-                                          optTime = pd.Timestamp(2023, 3, 6, 8, 0, 0))
 
 # %%
 ## Dummy inputs 
@@ -571,7 +579,8 @@ def get_new_state(expected_demand, new_session_start):
 ## Row: 0, 9, 17
 last_opt_time = pd.Timestamp(2023, 3, 6, 8, 0, 0)
 
-for row in subset.index[:1]:
+
+for row in subset.index[:]:
     new_session_start = subset.loc[row,"startChargeTime"]
     new_session_choice = subset.loc[row,"choice"]
     new_session_id = subset.loc[row,"dcosId"]
