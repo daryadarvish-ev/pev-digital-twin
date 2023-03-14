@@ -364,7 +364,7 @@ def convertOutput(stateRecords, station_info, res, hour, user_choice, optTime):
     new_user = dict()
     new_user["dcosId"] = "dummyUser"
     new_user["choice"] = user_choice  # This choice and OPT power / price are decided outside the optimizer
-    new_user["powerRate"] = "HIGH" if res["power_rate"] == 6.6 else "LOW"
+    new_user["powerRate"] = "HIGH" if res["power_rate"] >= 4 else "LOW"
     new_user["energyNeeded"] = int(1000 * res['e_need'])
     new_user["optPower"], new_state["aggPower"], new_user["deadline"] = powerOutput(res, user_choice, optTime)
     ## TO-DO: How to get the deadline? Is it the rounded and discretized time or the actual time? For example, 8:45(Rounded) / 8:47(Actual)?
@@ -571,7 +571,10 @@ def get_new_state(expected_demand, new_session_start):
 ## Row: 0, 9, 17
 last_opt_time = pd.Timestamp(2023, 3, 6, 8, 0, 0)
 
-for row in subset.index[:1]:
+for row in subset.index[:]:
+    print("")
+    print("Now we are optimizing for row:",row,"at time:",subset.loc[row,"startChargeTime"])
+    print("")
     new_session_start = subset.loc[row,"startChargeTime"]
     new_session_choice = subset.loc[row,"choice"]
     new_session_id = subset.loc[row,"dcosId"]
@@ -613,7 +616,7 @@ for row in subset.index[:1]:
 
     # We only take the next 4 hours of the price table
 
-    optHours = arrHourList(arrival_hour, optHorizon=4)
+    optHours, overnight = arrHourList(arrival_hour, optHorizon=4)
     ## read the stateRecords last entry
     stateRecords = [new_State]
 
