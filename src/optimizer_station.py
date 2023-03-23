@@ -603,7 +603,7 @@ class Optimization_station:
         if len(self.Parameters.TOU) < self.Problem.user_time + self.var_dim_constant: # if there is overnight charging
             TOU_all = np.concatenate([self.Parameters.TOU, self.Parameters.TOU])
         TOU_all = TOU_all[self.Problem.user_time:(self.Problem.user_time + self.var_dim_constant)].reshape(-1, 1)
-        utility_cost_sch = np.sum(TOU_all.T @ sch_agg.reshape(-1, 1)) *  + self.Parameters.cost_dc * p_dc_sch_k[0]
+        utility_cost_sch = np.sum(TOU_all.T @ sch_agg.reshape(-1, 1)) + self.Parameters.cost_dc * p_dc_sch_k[0]
         utility_cost_reg = np.sum(TOU_all.T @ reg_agg.reshape(-1, 1)) + self.Parameters.cost_dc * p_dc_reg_k[0]
 
         ### Output the results
