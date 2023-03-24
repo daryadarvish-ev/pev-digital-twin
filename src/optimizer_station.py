@@ -313,7 +313,7 @@ class Optimization_station:
         if user_keys:
             users = [d for d in self.station_info if d["dcosId"] in user_keys]
             TOU_idx = np.int_(self.k / delta_t - np.array([user["start_time"] for user in users]))
-            existing_reg_obj = np.sum([user["optPower"][TOU_idx[i]:].T @ (
+            existing_reg_obj = np.sum([user["optPower"][TOU_idx[i]: user["N_reg"]].T @ (
                     user["TOU"][TOU_idx[i]: user["N_reg"]] - user["price"]).reshape(-1, 1) for i, user
                                        in enumerate(users)])
 
