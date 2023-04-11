@@ -8,7 +8,7 @@ from Check_if_any_user_in_charging_station import *
 from User_info import *
 from run_optimization import *
 from history import HistoricalData
-from check_pole import *
+# from check_pole import *
 from choice_append import *
 from data_analysis import *
 

@@ -5,24 +5,26 @@ import random
 
 class SessionGen:
 
-    def __init__(self, daily_sessions, data_file, rnd_seeds=(100, 200, 300)):
-        self.ses = daily_sessions
+    def __init__(self, daily_sessions, total_day, data_file, rnd_seeds=(150, 250, 350)):
+        self.sesession = daily_sessions
+        self.total_day = total_day
+        self.ses = [daily_sessions * 3] * total_day
         self.data = pd.read_csv(data_file, parse_dates=['connectTime', 'startChargeTime', 'Deadline', 'lastUpdate'])
-        self.df = pd.DataFrame(columns=['arrivalDay','arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
+        self.df = pd.DataFrame(columns=['arrivalDay', 'arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
         self.rnd_seeds = rnd_seeds
 
     def arrival_gen(self):
         self.data['arrivalMin'] = self.data['connectTime'].apply(lambda x: x.hour * 60 + x.minute)
         self.data['arrivalHour'] = self.data['connectTime'].apply(lambda x: x.hour)
-        
+
         for i in range(len(self.ses)):
             np.random.seed(self.rnd_seeds[0] + i)
             quantiles = sorted(np.random.rand(self.ses[i]))
             aux_df = pd.DataFrame()
-            aux_df['arrivalDay'] = [i]*self.ses[i]
-            aux_df['arrivalHour'] = (np.quantile(self.data['arrivalMin'], quantiles))/60   # added arrival hours
+            aux_df['arrivalDay'] = [i] * self.ses[i]
+            aux_df['arrivalHour'] = (np.quantile(self.data['arrivalMin'], quantiles)) / 60  # added arrival hours
             aux_df['arrivalMin'] = np.quantile(self.data['arrivalMin'], quantiles)
-            aux_df['arrivalMinGlobal'] = aux_df['arrivalDay']*24*60 + aux_df['arrivalMin']
+            aux_df['arrivalMinGlobal'] = aux_df['arrivalDay'] * 24 * 60 + aux_df['arrivalMin']
             self.df = pd.concat([self.df, aux_df])
         self.df.reset_index(inplace=True, drop=True)
         self.df['arrivalMin'] = self.df['arrivalMin'].apply(lambda x: int(x))
@@ -30,7 +32,7 @@ class SessionGen:
         self.df['arrivalMinGlobal'] = self.df['arrivalMinGlobal'].apply(lambda x: int(x))
 
     def duration_gen(self, bins=(0, 472, 654, 1440)):
-        
+
         self.data['arrivalPeriod'] = pd.cut(self.data['arrivalMin'],
                                             bins=bins,
                                             labels=['night', 'morning', 'afternoon'])
@@ -55,17 +57,17 @@ class SessionGen:
         self.df.drop('arrivalPeriod', axis=1, inplace=True)
         self.df['durationMin'] = durations
         self.df['durationMin'] = self.df['durationMin'].apply(lambda x: int(x))
-        self.df['durationHour'] = durations                                          # added duration Hour
-        self.df['durationHour'] = self.df['durationMin'].apply(lambda x:(x))/60     # added duration Hour
+        self.df['durationHour'] = durations  # added duration Hour
+        self.df['durationHour'] = self.df['durationMin'].apply(lambda x: (x)) / 60  # added duration Hour
 
     def energy_gen(self, bins=(0, 217, 443, 1440)):
-        self.data['durationType'] = pd.cut(self.data['DurationHrs']*60,
+        self.data['durationType'] = pd.cut(self.data['DurationHrs'] * 60,
                                            bins=bins,
                                            labels=['short', 'medium', 'long'])
         self.data['averagePower'] = self.data['cumEnergy_Wh'] / self.data['DurationHrs']
         self.df['durationType'] = pd.cut(self.df['durationMin'],
-                                           bins=bins,
-                                           labels=['short', 'medium', 'long'])
+                                         bins=bins,
+                                         labels=['short', 'medium', 'long'])
 
         np.random.seed(self.rnd_seeds[2])
         quantiles = np.random.rand(self.df.shape[0])
@@ -86,7 +88,8 @@ class SessionGen:
         #         self.df['averagePower'] = avg_pow[i]
 
         self.df['averagePower'] = avg_pow
-        self.df['cumEnergy_kWh'] = self.df.apply(lambda x: int(x['averagePower']*x['durationMin']/(60*1000)), axis=1) # I have changed the column name from cumEnergy_Wh to kWh
+        self.df['cumEnergy_kWh'] = self.df.apply(lambda x: int(x['averagePower'] * x['durationMin'] / (60 * 1000)),
+                                                 axis=1)  # I have changed the column name from cumEnergy_Wh to kWh
         self.df.drop(['averagePower', 'durationType'], axis=1, inplace=True)
 
     def generate_session(self):
@@ -104,9 +107,26 @@ class SessionGen:
 
         # Produce input_df dataframe with the generated data
         input_df = self.df
-        input_df_without_preprocess = self.df
+
+        # store the real data (without rounding up based on 15mins)
+
+        input_real_df = input_df.copy()
 
         ################### Rounding up / (15mins based) #################
+        # adding departure hours
+        input_df['departureHour'] = (
+                    input_df['arrivalMin'].apply(lambda x: x) + input_df['durationMin'].apply(lambda x: x))
+        input_real_df['departureHour'] = (
+                    input_real_df['arrivalMin'].apply(lambda x: x) + input_real_df['durationMin'].apply(lambda x: x))
+
+        input_df['departureHour'] = input_df['departureHour'].apply(lambda x: int(x // 60))
+        input_df["departureMinGlobal"] = (
+                    input_df['arrivalMinGlobal'].apply(lambda x: x) + input_df['durationHour'].apply(lambda x: x) * 60)
+
+        input_real_df['departureHour'] = input_real_df['departureHour'].apply(lambda x: int(x // 60))
+        input_real_df["departureMinGlobal"] = (
+                    input_real_df['arrivalMinGlobal'].apply(lambda x: x) + input_real_df['durationHour'].apply(
+                lambda x: x) * 60)
 
         input_df['arrivalHour'] = input_df['arrivalHour'].apply(lambda x: round(x / 0.25) * 0.25 + 0.25)
         input_df['arrivalMinGlobal'] = input_df['arrivalMinGlobal'].apply(lambda x: round(x / 15) * 15 + 15)
@@ -116,18 +136,30 @@ class SessionGen:
         input_df['cumEnergy_kWh'] = input_df['cumEnergy_kWh'].apply(lambda x: round(x / 10) * 10 + 10)  # Insert the kWH
         # input_df['cumEnergy_kWh'] = input_df['cumEnergy_kWh'].apply(lambda x: (x)) # Insert the kWH
 
-        # adding departure hours
-        input_df['departureHour'] = (
-                    input_df['arrivalMin'].apply(lambda x: x) + input_df['durationMin'].apply(lambda x: x))
-        input_df['departureHour'] = input_df['departureHour'].apply(lambda x: int(x // 60))
-        input_df["departureMinGlobal"] = (
-        (input_df['arrivalMinGlobal'].apply(lambda x: x) + input_df['durationHour'].apply(lambda x: x) * 60))
-
         # filter out impossible charing Scenario (durationMin*6.6kWh(maxpower) > cumEnergy_Wh)
         input_df = input_df[input_df['durationHour'] * 6.6 > input_df['cumEnergy_kWh']]
+        input_real_df = input_real_df[input_real_df['durationHour'] * 6.6 > input_real_df['cumEnergy_kWh']]
 
         ## filter out overnight charging check
         input_df = input_df[input_df['arrivalMin'] + input_df['durationMin'] < 1440]
+        input_real_df = input_real_df[input_real_df['arrivalMin'] + input_real_df['durationMin'] < 1440]
+
+        ############### 1 mins based ########################
+        # input_df['arrivalHour'] = input_df['arrivalHour'].apply(lambda x: round(x))
+        # input_df['arrivalMinGlobal'] = input_df['arrivalMinGlobal'].apply(lambda x: round(x))
+        # input_df['durationMin'] = input_df['durationMin'].apply(lambda x: round(
+        #     x ))  ### convert the charge druation in termss of session which is 25. 0 remander, also changed to math ceil method
+        # input_df['durationHour'] = input_df['durationHour'].apply(lambda x: round(x))
+        # input_df['cumEnergy_kWh'] = input_df['cumEnergy_kWh'].apply(lambda x: round(x))  # Insert the kWH
+        # # input_df['cumEnergy_kWh'] = input_df['cumEnergy_kWh'].apply(lambda x: (x)) # Insert the kWH
+        #
+        # # adding departure hours
+        # input_df['departureHour'] = (
+        #             input_df['arrivalMin'].apply(lambda x: x) + input_df['durationMin'].apply(lambda x: x))
+        # input_df['departureHour'] = input_df['departureHour'].apply(lambda x: int(x // 60))
+        # input_df["departureMinGlobal"] = (
+        # (input_df['arrivalMinGlobal'].apply(lambda x: x) + input_df['durationHour'].apply(lambda x: x) * 60))
+        #
 
         # show the max columns and rows
         pd.set_option('display.max_columns', None)
@@ -135,20 +167,29 @@ class SessionGen:
 
         # ascending order
         input_df = input_df.sort_values(['arrivalDay', 'arrivalHour', 'arrivalMinGlobal'], ascending=[True, True, True])
+        input_real_df = input_real_df.sort_values(['arrivalDay', 'arrivalHour', 'arrivalMinGlobal'],
+                                                  ascending=[True, True, True])
+
+        # Filter input_real_df based on the index labels of input_df
+        input_real_df = input_real_df[input_real_df.index.isin(input_df.index)]
 
         # set the index again
         input_df = input_df.reset_index(drop=True)
+        input_real_df = input_real_df.reset_index(drop=True)
 
-        ##### After filtering out the data , Keep only daily sessions needed ##
+        print('input_df \n, ', input_df)
+        print('input_real_df \n ', input_real_df)
+
+        #### After filtering out the data , Keep only daily sessions needed ##
 
         # how many session per day
-        day_session = 10
+        day_session = self.sesession
 
         # currently how many sessions are in one day
         data_len = input_df['arrivalDay'].value_counts()
 
         # list of days
-        days = list(range(0, day_session, 1))
+        days = list(range(0, self.total_day, 1))
 
         # dictionary for each day with index
         d = {day: [] for day in days}
@@ -172,11 +213,24 @@ class SessionGen:
             Val_list += to_keep
 
         input_df = input_df.loc[input_df.index.isin(Val_list)]
+        input_real_df = input_real_df.loc[input_real_df.index.isin(Val_list)]
 
-        print(input_df['arrivalDay'].value_counts())
+        # print(input_df['arrivalDay'].value_counts())
         input_df = input_df.dropna()
         input_df = input_df.reset_index(drop=True)
-        print(input_df)
-        print(input_df.shape)
-        
-        return input_df
+        input_real_df = input_real_df.dropna()
+        input_real_df = input_real_df.reset_index(drop=True)
+        # print(input_df)
+        # print(input_df.shape)
+        print('this is input_df \n', input_df)
+        print('this is the real input_df \n', input_real_df)
+
+        # ascending order
+        input_df = input_df.sort_values(['arrivalDay', 'arrivalHour', 'arrivalMinGlobal'], ascending=[True, True, True])
+        input_real_df = input_real_df.sort_values(['arrivalDay', 'arrivalHour', 'arrivalMinGlobal'],
+                                                  ascending=[True, True, True])
+        # set the index again
+        input_df = input_df.reset_index(drop=True)
+        input_real_df = input_real_df.reset_index(drop=True)
+
+        return input_df, input_real_df
