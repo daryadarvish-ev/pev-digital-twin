@@ -7,7 +7,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from pylab import *
-from process import unpack_power
+from process_input_dataset import unpack_power
 
 
 def wrap_labels(ax, width, break_long_words=False):

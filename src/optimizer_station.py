@@ -15,22 +15,29 @@ class Parameters:
     """
     def __init__(self, 
                 z0 = np.array([1,1,1,1]).reshape(4,1),
-                v0 = np.array([0.3333, 0.3333, 0.3333]).reshape(3,1) ,  
+                v0 = np.array([0.333, 0.333, 0.333]).reshape(3,1) ,
                 Ts = 0.25, # 1 control horizon interval = 0.25 global hour
                 base_tarriff_overstay = 1.0, 
                 eff = 1,  # Charging efficient, assumed to be 100%
                 soft_v_eta = 1e-4, # For convex relaxation in constraints.
-                opt_eps = 0.0001, 
+                opt_eps = 0.0001,
                 TOU = np.ones((96,))): # Time-of-user charging tariff: 96 intervals, 1 day.
 
         # TOU Tariff in cents / kwh
         # TOU * power rate = cents  / hour
 
+        # off-peak 0.194  cents / kwh
+        TOU_tariff = np.ones((96,)) * 19.4
+        ## 4 pm - 9 pm peak 0.385 cents / kwh
+        TOU_tariff[64:84] = 38.5
+        ## 9 am - 2 pm super off-peak 0.16.6 $ / kWh  to cents / kwh
+        TOU_tariff[36:56] = 16.6
+
         self.v0 = v0
         self.z0 = z0
         self.Ts = Ts
         self.base_tariff_overstay = base_tarriff_overstay
-        self.TOU = TOU
+        self.TOU = TOU_tariff
         self.eff = eff # power efficiency
         self.dcm_choices = ['charging with flexibility', 'charging asap', 'leaving without charging']
         self.soft_v_eta = soft_v_eta #softening equality constraint for v; to avoid numerical error
@@ -515,6 +522,7 @@ class Optimization_station:
 
         ### Existing ASAP Users(check if they are still there)
         user_keys = self.station["ASAP_list"].copy()
+
         if user_keys:
             for user_key in user_keys:
                 user = self.station[user_key].Problem
@@ -560,6 +568,7 @@ class Optimization_station:
             delta_t = self.Parameters.Ts
             N_flex = self.Problem.N_flex
 
+
             user_keys = self.station['FLEX_list']
             existing_flex_obj = 0
             if user_keys:
@@ -585,7 +594,13 @@ class Optimization_station:
             for i in range(len(self.station['ASAP_list'])): # for all ASAP users
                 user = self.station[user_keys[i]]
                 TOU_idx = int(self.k / delta_t - user.Problem.user_time)
-                asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:].squeeze()
+
+
+                try:
+                    asap_power_sum_profile[: user.Problem.N_asap - TOU_idx] += user.asap_powers[TOU_idx:user.Problem.N_asap].squeeze()
+                except:
+                    print(' user_asap_power', user.asap_powers)
+                    print('sum_profile', asap_power_sum_profile)
 
             num_flex = self.existing_user_info.shape[0]
 
@@ -599,7 +614,11 @@ class Optimization_station:
 
             # Use cvxpy so all variables are cvxpy variables
             new_flex_obj = u[: N_flex].T @ (TOU[:N_flex] - z[0]).reshape(-1, 1)
-            new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1]))
+
+            try :
+                new_asap_obj = cp.sum(station_pow_max * (TOU[:N_asap] - z[1]))
+            except:
+                print('what is this', new_asap_obj)
             new_leave_obj = 0
 
             J0 = (new_flex_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(asap_power_sum_profile + cp.sum(cp.reshape(u, (self.var_dim_constant, num_flex)).T, axis=0))) * v[0]
