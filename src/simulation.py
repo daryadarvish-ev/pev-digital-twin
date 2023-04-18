@@ -1,13 +1,10 @@
-import matplotlib.pyplot as plt
 import seaborn as sns
 import simpy
-from matplotlib.pyplot import figure
-
 from optimizer_station import *
 from check_users_at_station import *
 from simulation_choice_function import *
 from user_info import *
-# from history import HistoricalData
+from simulation_logger import SimulationLogger
 # from check_pole import *
 from choice_append import *
 from simulation_data_analysis import *
@@ -110,6 +107,8 @@ class Simulator:
 
 
                     event = user.retrieve_user_information()
+
+                    print(event)
                     # info = user_info(input_df, time, user, delta_t)
 
                     # get arrivalMinGlobal and departureMinGlobal
@@ -124,22 +123,19 @@ class Simulator:
 
                     prb = Problem(par=par, event=event)
                     opt = Optimization_charger(par, prb)
-                    res = opt.run_opt()
-
-                    dictionary = res
-                    # print(dictionary)
-                    # self.station['EV' + str(user_value)] = opt
-                    # print('station', self.station)
+                    res = opt.run_opt()  # returns the current resolution from the optimizer
+                    # print('res', res)
 
                     # store historical values to the log info (energy needed, tariffs, power(soc))
-                    # log = HistoricalData()
-                    # log1 = log.add_data(time, res)
+                    log = SimulationLogger()
+                    log.add_data(time, res)
 
-                    # print('this is log', log)
-                    # flex_price = log.get_tariff_flex(time)
-                    # asap_price = log.get_tariff_asap(time)
-                    # print('flex price', flex_price)
-                    # print('asap price', asap_price)
+                    print('this is log', log)
+                    flex_price = log.get_tariff_flex(time)
+                    asap_price = log.get_tariff_asap(time)
+                    print('flex price', flex_price)
+                    print('asap price', asap_price)
+
 
                     # Driver choice based on the tariff
                     choice, price = basic_choice_function(asap_price, flex_price)
@@ -208,7 +204,6 @@ class Simulator:
                     opt = Optimization_station(par, prb, self.station, arrival_hour)
                     res = opt.run_opt()
                     # print('this is what2 #####', self.station)
-
 
                     dictionary = res[1]
                     # print(dictionary)

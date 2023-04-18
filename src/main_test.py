@@ -1,6 +1,10 @@
+import random
+
 from session_generator import SessionGen
 from simulation import *
 import simpy
+
+random.seed(1)
 
 # User Choice #
 data_file = '../data/Sessions2.csv'
