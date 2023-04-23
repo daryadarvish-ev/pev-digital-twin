@@ -1,10 +1,22 @@
-import matplotlib.pyplot as plt
-import numpy as np
 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.impute import KNNImputer
+
+import warnings
+warnings.filterwarnings("ignore")
 
 class data_analyze:
 
-    def __init__(self, choice_dict, price_dict, arrival_dict , departure_dict ):
+    def __init__(self, choice_dict, price_dict, arrival_dict, departure_dict):
         self.choice = choice_dict
         self.price = price_dict
         self.arrival = arrival_dict
@@ -104,6 +116,87 @@ class data_analyze:
         # Show the plot
         plt.show()
 
+    def revenue_calculate(self, price, energy, duration):
+        revenue = (price * 0.01) * energy
+        return revenue
+
+    def total_revenue_calculate(self, price_dict, arr_dict, dep_dict, e_needed_dict, user_choice_dict):
+        total_revenue = 0
+        for key in user_choice_dict.keys():
+            if user_choice_dict[key] == 'Regular' or user_choice_dict[key] == 'Scheduled':
+                price = price_dict[key]
+                energy = e_needed_dict[key]
+                duration = dep_dict[key] - arr_dict[key]
+                total_revenue += self.revenue_calculate(price, energy, duration)
+        return total_revenue
+
+
+
+    def usr_behavior_clf(self, data_path, analysis_start=1324):
+        data = pd.read_csv(data_path)
+        # Data after 1324th row is more stable and closer to current situation
+        X = data[['vehicle_model',
+                  'stationId',
+                  'startChargeTime',
+                  'reg_centsPerHr',
+                  'sch_centsPerHr',
+                  'sch_centsPerOverstayHr']][analysis_start:]
+        # Create a KNNImputer with k=3
+        imputer = KNNImputer(n_neighbors=3)
+
+        # Fit the imputer and transform the dataset
+        X[['reg_centsPerHr', 'sch_centsPerHr', 'sch_centsPerOverstayHr']] = imputer.fit_transform(X[['reg_centsPerHr',
+                                                                                                     'sch_centsPerHr',
+                                                                                                     'sch_centsPerOverstayHr']])
+        # Convert categorical features into numerical values
+        X['vehicle_model'] = X['vehicle_model'].astype('category').cat.codes
+        # Convert 'startChargeTime' column to datetime
+        X['startChargeTime'] = pd.to_datetime(X['startChargeTime'])
+        # Convert 'startChargeTime' column to timestamp
+        X['startChargeTime'] = X['startChargeTime'].apply(lambda x: x.timestamp())
+        # Split the data into features (X) and labels (y)
+        y = data['choice'][analysis_start:]
+
+        # Split the data into training and testing sets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2,
+                                                            # random_state=42
+                                                            )
+
+        # Define classifiers
+        classifiers = {
+            'Random Forest': RandomForestClassifier(n_estimators=100,
+                                                    # random_state=2023
+                                                    ),
+            'Logistic Regression': LogisticRegression(solver='liblinear',
+                                                      # random_state=2023
+                                                      ),
+            'K-Nearest Neighbors': KNeighborsClassifier(n_neighbors=5),
+            'Decision Tree': DecisionTreeClassifier(
+                # random_state=2023
+            )
+        }
+
+        # Train and evaluate each classifier
+        accuracies = {}
+        for name, clf in classifiers.items():
+            clf.fit(X_train, y_train)
+            y_pred = clf.predict(X_test)
+            accuracy = accuracy_score(y_test, y_pred)
+            accuracies[name] = accuracy
+            print(f"{name}:")
+            print(f"  Accuracy: {accuracy:.2f}")
+            print("  Classification Report:")
+            print(classification_report(y_test, y_pred))
+
+        # Visualize classifier accuracies
+        plt.figure(figsize=(10, 6))
+        plt.bar(accuracies.keys(), accuracies.values())
+        plt.xlabel('Classifiers')
+        plt.ylabel('Accuracy')
+        plt.title('Classifier Accuracies Comparison')
+        plt.show()
+        # for i in range(len(y_pred)):
+        #     print(y_pred[i], y_test.reset_index(drop=True)[i])
 
 
 
