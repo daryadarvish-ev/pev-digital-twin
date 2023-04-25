@@ -793,7 +793,7 @@ class Optimization_station:
 
         station = self.station # We update the station struct every round.
 
-        return station, opt
+        return opt
 
 class Optimization_charger:
 
@@ -1200,20 +1200,19 @@ class Optimization_charger:
         opt["flex_e_delivered"] = e_deliveredk_flex
 
         # In outer simulator, it chooses the "flex" or "asap" as powers.
-        opt["flex_powers"] = uk_flex
         self.flex_powers = uk_flex
+        opt["flex_powers"] = uk_flex
 
         asap_powers = np.ones((self.Problem.N_asap, 1)) * self.Problem.station_pow_max
         if self.Problem.N_asap_remainder != 0:
             asap_powers[self.Problem.N_asap - 1] = self.Problem.station_pow_max * self.Problem.N_asap_remainder
-        opt["asap_powers"] = asap_powers
         self.asap_powers = asap_powers
         self.Problem.powers = uk_flex
+        opt["asap_powers"] = asap_powers
         opt["v"] = vk
         opt["prob_flex"] = vk[0]
         opt["prob_asap"] = vk[1]
         opt["prob_leave"] = vk[2]
-
         opt["J"] = Jk[:count]
         opt["J_sub"] = J_sub[:, :count]
         opt["z_iter"] = z_iter[:, :count]
@@ -1225,8 +1224,6 @@ class Optimization_charger:
         opt["N_asap"] = self.Problem.N_asap
         opt["N_flex"] = self.Problem.N_flex
         opt["N_asap"] = self.Problem.N_asap
-
-
         opt["num_iter"] = count
         opt["prb"] = self.Problem
         opt["par"] = self.Parameters

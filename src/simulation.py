@@ -1,26 +1,39 @@
 import seaborn as sns
 import simpy
 from optimizer_station import *
-from check_users_at_station import *
-from simulation_choice_function import *
-from user_info import *
-from simulation_logger import SimulationLogger
-# from check_pole import *
-from choice_append import *
-from simulation_data_analysis import *
+from station_pole_occupancy import *  # function for checking pole occupancy
+
+# class driver should include -----------------------------
+from driver import *  # |
+from simulation_choice_function import *  # |
+from user_info import *  # |
+from choice_append import *  # |
+# ---------------------------------------------------------
+
+# class state_info should include -------------------------
+from state_info import *  # |
+from simulation_logger import SimulationLogger  # |
+# from check_pole import *                               # |
+from simulation_data_analysis import *  # |
+from check_users_at_station import *  # |
+
+# ---------------------------------------------------------
 
 warnings.filterwarnings('ignore')
 sns.set_theme()
+
 
 class Simulator:
     """
     This class hold the simulation ...
     """
-    def __init__(self, daily_sessions, total_day, input_df ,input_real_df , env):
+
+    def __init__(self, daily_sessions, total_day, input_df, input_real_df, number_of_pole, env):
 
         # SIMULATION PARAMETERS
         self.input_df = input_df
         self.input_real_df = input_real_df
+        self.DAILY_SESSIONS = daily_sessions
         self.NUM_DAYS = total_day  # Arbitrarily changed this
         self.SIM_RUN_TIME = 1440 * self.NUM_DAYS
         self.CAR_ARR_TIME = 120
@@ -34,15 +47,33 @@ class Simulator:
         self.user_choice_price = {}
         self.user_arrival_time = {}
         self.user_departure_time = {}
+        self.e_needed = {}
+        self.number_of_pole = number_of_pole
+        self.pole_occupancy = {}
+        self.log = SimulationLogger()
 
+    def run_simulation(self, env, t_end):
 
-    def run_simulation (self,env, input_df, t_end):
+        occupied_pole_num = []
+        MM = range(t_end)
+        MM = MM[::1]
+        n = self.number_of_pole
+        pole_list = [str(i) for i in range(1, n + 1)]
 
+        poles = pd.DataFrame(columns=pole_list, index=MM)
         delta_t = 1
         # Initialize the previous day variable to the starting day
         day = -1
         prev_day = 0
 
+        ev = Driver(data_path='../data/Sessions2_20221020.csv',
+                    daily_sessions=self.DAILY_SESSIONS,
+                    total_day=self.NUM_DAYS,
+                    delta_t=delta_t, )
+        anlz = data_analyze(self.user_choice,
+                            self.user_choice_price,
+                            self.user_arrival_time,
+                            self.user_departure_time)
         # Start the simulation loop
         while True:
 
@@ -50,11 +81,11 @@ class Simulator:
             print('this is time', time)
             yield env.timeout(delta_t)  # time increment is set as 1 min
 
-
             if (time % (24 * 60)) == 0:  # when a day is over, then count the day
                 day += 1
                 if day != prev_day:  # if the current day is different from the previous day
-                    self.station = {'FLEX_list': self.FLEX_user, 'ASAP_list': self.ASAP_user,'LEAVE_list':self.LEAVE_user}  # add the user lists to the station dictionary
+                    self.station = {'FLEX_list': self.FLEX_user, 'ASAP_list': self.ASAP_user,
+                                    'LEAVE_list': self.LEAVE_user}  # add the user lists to the station dictionary
                     print("It's a new day!")
                     self.FLEX_user = []  # reset the user lists
                     self.ASAP_user = []
@@ -65,7 +96,8 @@ class Simulator:
 
             if time > t_end:  # if the time has passed the SIM_RUN_TIME, then break the loop
 
-                data_analysis = data_analyze(self.user_choice, self.user_choice_price, self.user_arrival_time, self.user_departure_time)
+                data_analysis = data_analyze(self.user_choice, self.user_choice_price, self.user_arrival_time,
+                                             self.user_departure_time)
                 data_analysis.analysis()
                 data_analysis.plot_generation()
 
@@ -73,7 +105,8 @@ class Simulator:
                 break
 
             # check -> new users and current users at the time
-            new_user, current_users = CheckUsersAtStation(self.input_df, day, time) # at each time step, check if there is any user in the charging station
+            new_user, current_users = CheckUsersAtStation(self.input_df, day,
+                                                          time)  # at each time step, check if there is any user in the charging station
             print('new_user : ', new_user)
             print('current_users : ', current_users)
 
@@ -85,15 +118,8 @@ class Simulator:
                 for user_value in new_user:
 
                     # print(' this is the user value: ', user_value)
-                    user = user_info(self.input_df, time, user_value, delta_t) # retrieve user information necessary for optimization
-
-                    # par = Parameters(z0=np.array([20, 20, 1, 1]).reshape(4, 1),
-                    #                  # due to local optimality, we can try multiple starts
-                    #                  eff=1.0,
-                    #                  soft_v_eta=1e-4,
-                    #                  opt_eps=0.0001,
-                    #                  TOU=TOU_tariff
-                    #                  )
+                    user = ev.user_info(self.input_df, time, user_value,
+                                        delta_t)  # retrieve user information necessary for optimization
 
                     # always make the first one smaller than
                     par = Parameters(z0=np.array([20, 25, 1, 1]).reshape(4, 1),
@@ -103,8 +129,7 @@ class Simulator:
                                      eff=1.0,
                                      soft_v_eta=1e-4,
                                      opt_eps=0.0001,
-                                     TOU = np.ones((96,)))
-
+                                     TOU=np.ones((96,)))
 
                     event = user.retrieve_user_information()
 
@@ -124,55 +149,58 @@ class Simulator:
                     prb = Problem(par=par, event=event)
                     opt = Optimization_charger(par, prb)
                     res = opt.run_opt()  # returns the current resolution from the optimizer
-                    # print('res', res)
 
-                    # store historical values to the log info (energy needed, tariffs, power(soc))
-                    log = SimulationLogger()
-                    log.add_data(time, res)
-
-                    print('this is log', log)
-                    flex_price = log.get_tariff_flex(time)
-                    asap_price = log.get_tariff_asap(time)
-                    print('flex price', flex_price)
-                    print('asap price', asap_price)
-
+                    # get flex and asap tarrif
+                    flex_price = res['tariff_flex']
+                    asap_price = res['tariff_asap']
 
                     # Driver choice based on the tariff
-                    choice, price = basic_choice_function(asap_price, flex_price)
-                    print('this is choice:', choice)
+                    choice, price = ev.basic_choice_function(asap_price, flex_price)
+                    print('This is choice:', choice)
 
-                    self.user_choice_price['EV'+ str(user_value)] = price
-                    print('what is this user_pirce dictionary: ', self.user_choice_price)
+                    res['choice'] = choice
 
-                    self.user_choice['EV'+ str(user_value)] = (choice)
-                    print('what is this user_choice dictionary: ', self.user_choice)
+                    # store historical values to the log info (energy needed, tariffs, power(soc))
+                    self.log.add_data(time, res)
 
-                    append_choice(choice, user_value, current_users, self.user_choice, price, self.station , opt)
+                    self.user_choice_price['EV' + str(user_value)] = price
+                    print('This is this user_price dictionary: ', self.user_choice_price)
+
+                    self.user_choice['EV' + str(user_value)] = choice
+                    print('This is this user_choice dictionary: ', self.user_choice)
+
+                    ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
 
                     print('station', self.station)
 
                     arrival_min_global = self.input_real_df['arrivalMinGlobal'][user_value - 1]
                     self.user_arrival_time['EV' + str(user_value)] = arrival_min_global
-
-                    print('what is this user_arrival dictionary: ', self.user_arrival_time)
+                    print('This is this user_arrival dictionary: ', self.user_arrival_time)
 
                     departure_min_global = self.input_real_df['departureMinGlobal'][user_value - 1]
                     self.user_departure_time['EV' + str(user_value)] = departure_min_global
+                    print('This is this user_departure dictionary: ', self.user_departure_time)
 
-                    print('what is this user_departure dictionary: ', self.user_departure_time)
+                    pole_dict, occupied_pole_num = check_pole(arrival_min_global, departure_min_global, t_end, poles,
+                                                              occupied_pole_num, pole_number=self.number_of_pole)
 
+                    self.pole_occupancy['EV' + str(user_value)] = occupied_pole_num[user_value - 1]
+                    print('what is the pole occupancy dict', self.pole_occupancy)
 
+                    for key in self.pole_occupancy:
+                        if self.pole_occupancy[key] == 'unavailability leave':
+                            self.user_choice[key] = 'unavailability leave'
 
+                    e_needed = self.input_df['cumEnergy_kWh'][user_value - 1]
+                    self.e_needed['EV' + str(user_value)] = e_needed
+                    print('This is this e_needed dictionary: ', self.e_needed)
 
-                #Charging station occupancy
-                # cs = ChargingStation(num_poles=8)
-                # cs.charge_car(user=user_value, arrival_time= arrival_min_global, departure_time= departure_min_global, user_choice = choice)
-
-                # # Check which poles are available at time:
-                # available_poles, occupied_poles = cs.get_available_poles(time)
-                # print(f"Available poles: {available_poles}")
-                # print(f"Occupied poles: {occupied_poles}")
-                # print('#### end ####')
+                    total_charging_revenue = anlz.total_revenue_calculate(self.user_choice_price,
+                                                                          self.user_arrival_time,
+                                                                          self.user_departure_time,
+                                                                          self.e_needed,
+                                                                          self.user_choice)
+                    print('This is the total charging revenue: ', total_charging_revenue)
 
             ############################# if there is new user & current user ##############################
             elif new_user and current_users:
@@ -181,9 +209,9 @@ class Simulator:
                 for user_value in new_user:
 
                     # user_value # current user
-                    print(' this is the user value: ', user_value)
-                    user = user_info(self.input_df, time, user_value,
-                                     delta_t)  # retrieve user information necessary for optimization
+                    print('This is the user value: ', user_value)
+                    user = ev.user_info(self.input_df, time, user_value,
+                                        delta_t)  # retrieve user information necessary for optimization
 
                     par = Parameters(z0=np.array([20, 20, 1, 1]).reshape(4, 1),
                                      # due to local optimality, we can try multiple starts
@@ -203,65 +231,69 @@ class Simulator:
                     # print('this is what #####', self.station)
                     opt = Optimization_station(par, prb, self.station, arrival_hour)
                     res = opt.run_opt()
-                    # print('this is what2 #####', self.station)
-
-                    dictionary = res[1]
-                    # print(dictionary)
-                    # print(dictionary['tariff_asap'], dictionary['tariff_flex'])
-                    # print(type(res[1]))
-                    asap_price, flex_price = (dictionary['tariff_asap'], dictionary['tariff_flex'])
-                    # flex_price = log1.get_tariff_flex(time)
-                    # asap_price = log1.get_tariff_asap(time)
 
                     # Driver choice based on the tariff
-                    choice, price = basic_choice_function(asap_price, flex_price)
-                    print('this is choice:', choice)
+                    choice, price = ev.basic_choice_function(asap_price, flex_price)
+                    print('This is choice:', choice)
 
-                    # print('flex price', flex_price)
-                    # print('asap price', asap_price)
+                    # get flex and asap tarrif
+                    flex_price = res['tariff_flex']
+                    asap_price = res['tariff_asap']
+
+                    # Driver choice based on the tariff
+                    choice, price = ev.basic_choice_function(asap_price, flex_price)
+                    print('This is choice:', choice)
+
+                    res['choice'] = choice
+
+                    # store historical values to the log info (energy needed, tariffs, power(soc))
+                    self.log.add_data(time, res)
 
                     self.user_choice_price['EV' + str(user_value)] = price
-                    print('what is this user_pirce dictionary: ', self.user_choice_price)
+                    print('This is this user_pirce dictionary: ', self.user_choice_price)
 
                     self.user_choice['EV' + str(user_value)] = (choice)
-                    print('what is this user_choice dictionary: ', self.user_choice)
+                    print('This is this user_choice dictionary: ', self.user_choice)
 
                     arrival_min_global = self.input_real_df['arrivalMinGlobal'][user_value - 1]
                     self.user_arrival_time['EV' + str(user_value)] = arrival_min_global
-
-                    print('what is this user_arrival dictionary: ', self.user_arrival_time)
+                    print('This is this user_arrival dictionary: ', self.user_arrival_time)
 
                     departure_min_global = self.input_real_df['departureMinGlobal'][user_value - 1]
                     self.user_departure_time['EV' + str(user_value)] = departure_min_global
+                    print('This is this user_departure dictionary: ', self.user_departure_time)
 
-                    print('what is this user_departure dictionary: ', self.user_departure_time)
+                    pole_dict, occupied_pole_num = check_pole(arrival_min_global, departure_min_global, t_end, poles,
+                                                              occupied_pole_num, pole_number=self.number_of_pole)
 
+                    self.pole_occupancy['EV' + str(user_value)] = occupied_pole_num[user_value - 1]
+                    print('what is the pole occupancy dict', self.pole_occupancy)
 
-                    # print('this is the self.station when there is current user', self.station)
-                    append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
+                    for key in self.pole_occupancy:
+                        if self.pole_occupancy[key] == 'unavailability leave':
+                            self.user_choice[key] = 'unavailability leave'
+
+                    # Print the energy needed of users
+                    e_needed = self.input_df['cumEnergy_kWh'][user_value - 1]
+                    self.e_needed['EV' + str(user_value)] = e_needed
+                    print('This is this e_needed dictionary: ', self.e_needed)
+
+                    ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
 
                     print('station', self.station)
 
-
-                    # Charging station occupancy
-                    # cs = ChargingStation(num_poles=8)
-                    # cs.charge_car(user=user_value, arrival_time=arrival_min_global, departure_time=departure_min_global,
-                    #               user_choice=choice)
-
-                    # # Check which poles are available at time:
-                    # available_poles, occupied_poles = cs.get_available_poles(time)
-                    # print(f"Available poles: {available_poles}")
-                    # print(f"Occupied poles: {occupied_poles}")
-
+                    # Calculate total charging revenue
+                    total_charging_revenue = anlz.total_revenue_calculate(self.user_choice_price,
+                                                                          self.user_arrival_time,
+                                                                          self.user_departure_time,
+                                                                          self.e_needed,
+                                                                          self.user_choice)
+                    print('This is the total charging revenue: ', total_charging_revenue)
 
                     print('#### end ####')
-
 
             ############################# if there is NO new user ##############################
             else:
                 # print('station', self.station)
                 print('#### nothing happened ####')
                 pass
-
-
-
