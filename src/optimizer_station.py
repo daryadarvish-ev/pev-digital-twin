@@ -61,7 +61,7 @@ class Problem:
         self.par = par
         event = kwargs["event"]
         self.event = event
-        
+
         self.user_time = event["time"]
         self.e_need = event["e_need"]
 
@@ -71,36 +71,36 @@ class Problem:
         # self.station_pow_min = event["pow_min"]
         self.user_power_rate = event['user_power_rate']
 
-        self.power_rate = min(self.user_power_rate,self.station_pow_max)
+        self.power_rate = min(self.user_power_rate, self.station_pow_max)
 
         self.dcm_charging_flex_params = np.array([[ - self.power_rate * 0.0184 / 2], [ self.power_rate * 0.0184 / 2], [0], [0]])
         #% DCM parameters for choice 1 -- charging with flexibility
         self.dcm_charging_asap_params = np.array([[self.power_rate * 0.0184 / 2], [- self.power_rate * 0.0184 / 2], [0],[0.341 ]])
         #% DCM parameters for choice 2 -- charging as soon as possible
         self.dcm_leaving_params = np.array([[self.power_rate * 0.005 / 2], [self.power_rate * 0.005 / 2], [0], [-1 ]])
-        
+
         #% DCM parameters for choice 3 -- leaving without charging
         self.THETA = np.vstack((self.dcm_charging_flex_params.T, self.dcm_charging_asap_params.T,
                      self.dcm_leaving_params.T))
         # problem specifications
         self.N_flex = self.user_duration # charging duration that is not charged, hour
-        
-        ### IS THIS CORRECT? WHATS SOC NEED REPRESENTS? 
+
+        ### IS THIS CORRECT? WHATS SOC NEED REPRESENTS?
         # self.N_asap = math.floor((self.user_SOC_need - self.user_SOC_init) *
         #                          self.user_batt_cap / self.station_pow_max / par.eff / par.Ts)
 
-        ## HERE 12 IS SELF CODED 
+        ## HERE 12 IS SELF CODED
         self.N_asap = math.ceil((self.e_need / self.power_rate / par.eff * int(1 / par.Ts)))
         self.N_asap_remainder = (self.e_need / self.power_rate / par.eff * int(1 / par.Ts)) % 1
 
-#         print(par.TOU) 
-        if len(par.TOU) < self.user_time + self.user_duration: # if there is overnight chaarging 
-            par.TOU = np.concatenate([par.TOU,par.TOU]) 
+#         print(par.TOU)
+        if len(par.TOU) < self.user_time + self.user_duration: # if there is overnight chaarging
+            par.TOU = np.concatenate([par.TOU,par.TOU])
 
         self.TOU = par.TOU[self.user_time:(self.user_time + self.user_duration)]
-#         print(self.TOU) 
+#         print(self.TOU)
         # self.TOU = interpolate.interp1d(np.arange(0, 24 - 0.25 + 0.1, 0.25), par.TOU, kind = 'nearest')(np.arange(self.user_time, 0.1 + self.user_time + self.user_duration - par.Ts, par.Ts)).T
-        
+
         assert self.N_asap <= self.N_flex, print("Not enought time (n_asap,n_flex)",self.N_asap,self.N_flex)
 
 class Optimization_station:
@@ -120,13 +120,13 @@ class Optimization_station:
     def argmin_v(self, u, z):
 
         """
-        Parameters 
-        Decision Variables: 
+        Parameters
+        Decision Variables:
         v: price [ sm(theta_flex, z), sm(theta_asap, z), sm(theta_leave, z) ], (3,1)
         """
-        ### Read parameters 
+        ### Read parameters
 
-        THETA = self.Problem.THETA 
+        THETA = self.Problem.THETA
         soft_v_eta = self.Parameters.soft_v_eta
 
         ### Decision Variables
@@ -202,19 +202,19 @@ class Optimization_station:
 
         J = constr_J(v)
 
-        ### Log sum function conjugate: negative entropy 
+        ### Log sum function conjugate: negative entropy
         # lse_conj = - cp.sum(cp.entr(v))
         # func = v.T @ (THETA @ z)
-        # # J_4 = mu * (lse_conj - func) 
-        # constraints += [ v <= np.array((1,1,1))] # What is this? 
+        # # J_4 = mu * (lse_conj - func)
+        # constraints += [ v <= np.array((1,1,1))] # What is this?
         # constraints += [ cp.sum(v) >= 1 - soft_v_eta ]
 
         constraints = [v >= 0]
         constraints += [cp.sum(v) == 1]
 
         constraints += [cp.log_sum_exp(THETA @ z) - cp.sum(cp.entr(v)) - v.T @ (THETA @ z) <= soft_v_eta]
-        
-        ## Solve 
+
+        ## Solve
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
         prob.solve()
@@ -229,33 +229,33 @@ class Optimization_station:
 
     def argmin_z(self, u, v):
         """
-        Function to determine prices 
+        Function to determine prices
 
-        Decision Variables: 
+        Decision Variables:
         z: price [tariff_flex, tariff_asap, tariff_overstay, leave = 1 ]
 
-        Parameters: 
-        u, array, power for flex charging 
+        Parameters:
+        u, array, power for flex charging
         v, array with softmax results [sm_c, sm_uc, sm_y] (sm_y = leave)
         lam_x, regularization parameter for sum squares of the power var (u)
         lam_z_c, regularization parameter for sum squares of the price flex (u)
         lam_z_uc, regularization parameter for sum squares of the price asap (u)
         lam_h_c, regularization parameter for g_flex
         lam_h_uc, regularization parameter for g_asap
-        N_flex: timesteps arrival to departure 
+        N_flex: timesteps arrival to departure
         N_asap: timesteps required when charging at full capacity
 
         """
         # if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
         #     raise ValueError('[ ERROR] invalid $v$')
-        
+
         ### Read parameters
 #         vehicle_power_rate = self.Problem.power_rate
         soft_v_eta = self.Parameters.soft_v_eta
         THETA = self.Problem.THETA
 
         ### Decision Variables
-        
+
         z = cp.Variable(shape = (4), pos = True)
         def constr_J(z):
             N_asap = self.Problem.N_asap
@@ -340,29 +340,29 @@ class Optimization_station:
     def argmin_u(self, z, v):
         """
         Function to minimize charging cost. Flexible charging with variable power schedule
-        Inputs: 
+        Inputs:
 
-        Parameters: 
+        Parameters:
         z, array where [tariff_flex, tariff_asap, tariff_overstay, leave = 1 ]
         v, array with softmax results [sm_c, sm_uc, sm_y] (sm_y = leave)
         lam_x, regularization parameter for sum squares of the power var (u)
         lam_h_c, regularization parameter for g_flex
         lam_h_uc, regularization parameter for g_asap
-        N_flex: timesteps arrival to departure 
+        N_flex: timesteps arrival to departure
         N_asap: timesteps required when charging at full capacity
 
-        Parameters: 
+        Parameters:
         Decision Variables:
         SOC: state of charge (%)
         u: power (kW)
 
         Objective Function:
-        Note: delta_k is not in the objective function!! 
-        Check if it could make difference since power is kW cost is per kWh 
+        Note: delta_k is not in the objective function!!
+        Check if it could make difference since power is kW cost is per kWh
 
         Outputs
-        u: power 
-        SOC: SOC level 
+        u: power
+        SOC: SOC level
         """
 
         ### Read parameters
@@ -456,7 +456,7 @@ class Optimization_station:
 
         user_keys = self.station['FLEX_list']
         for i in range(self.existing_user_info.shape[0]):  # For all possible flex users
-            
+
             N_remain = int(self.existing_user_info[i, 2])
             e_need = self.existing_user_info[i, 4]
 
@@ -471,11 +471,11 @@ class Optimization_station:
             for j in range(self.var_dim_constant):
                 constraints += [e_delivered[j + e_start + 1] == e_delivered[j + e_start] + (float(eff) * delta_t * u[u_start + j])]
 
-        ## Solve 
+        ## Solve
         obj = cp.Minimize(J)
         prob = cp.Problem(obj, constraints)
         prob.solve()
-        
+
         # try:
         #     print("u:",np.round(u.value,2 ))
         # except:
@@ -559,7 +559,7 @@ class Optimization_station:
 
         # Initial values for uk
         uk_flex = self.Problem.station_pow_max * np.ones([var_dim_constant * (num_flex_user + 1), 1]) # We are optimizing the FLEX profile, so the dimension is all possible flex users * dimension_con
-        
+
         def J_func(z, u, v):
             # See the detailed comments of all J_func funcitons in self.argmin_u() (All of them are nearly identical)
             N_asap = self.Problem.N_asap
@@ -626,28 +626,6 @@ class Optimization_station:
             J2 = (new_leave_obj + existing_flex_obj + existing_asap_obj + self.Parameters.cost_dc * cp.max(asap_power_sum_profile + flex_power_sum_profile)) * v[2]
 
             return np.array([J0.value, J1.value, J2.value])
-        def charging_revenue(z, u):
-
-            # I did not modify or use this function in station-level opt. If you want to leverage it, please check the formulations.
-            N_asap = self.Problem.N_asap
-            TOU = self.Problem.TOU
-            station_pow_max = self.Problem.power_rate
-
-            delta_t = self.Parameters.Ts 
-
-            f_flex = u.T @ (z[0]- TOU) * delta_t
-            ## u : kW , z: cents / kWh, TOU : cents / kWh , delta_t : 1 \ h
-            # f_asap = np.sum(station_pow_max * (z[1] - TOU[:N_asap])) * delta_t 
-
-            N_asap_remainder  = self.Problem.N_asap_remainder 
-            
-            if N_asap_remainder > 0:
-                f_asap = (np.sum(station_pow_max * (TOU[:N_asap - 1] - z[1])) + (station_pow_max * N_asap_remainder) * (TOU[N_asap - 1] - z[1]) )* delta_t 
-                
-            else: 
-                f_asap = np.sum(station_pow_max * (TOU[:N_asap ] - z[1])) * delta_t
-
-            return f_flex, f_asap
 
         # Iteration information
 
@@ -722,8 +700,32 @@ class Optimization_station:
                 # Update the power profile
                 user.powers = user.powers.reshape(-1, 1)
                 user.powers[TOU_idx:] = uk_flex[int((i + 1) * var_dim_constant): int((i + 1) * var_dim_constant + N_remain)]
+                ## For SCH Users, their power profiles should be updated in user.powers.
                 # Update the dict.
                 self.station[user_keys[i]].Problem = user
+
+        ### Calculate the aggregated power profile for all users in the station
+        # REG
+        reg_power_sum_profile = np.zeros(self.var_dim_constant)
+        if self.station['ASAP_list']:
+            users = [self.station[user_key].Problem for user_key in self.station['ASAP_list']]
+            for i in range(len(self.station['ASAP_list'])): # for all ASAP users
+                user = users[i]
+                TOU_idx = int(self.k / self.Parameters.Ts - user.user_time)
+                reg_power_sum_profile[: user.N_asap - TOU_idx] += user.powers[TOU_idx:].reshape(-1)
+        # SCH
+        num_sch = len(self.station["FLEX_list"]) + 1
+        # Row: # of user, Col: Charging Profile
+        sch_power_sum_profile = uk_flex.reshape(num_sch, self.var_dim_constant)
+        sch_power_sum_profile = np.sum(sch_power_sum_profile[1:, :], axis=0) # Shape: (self.var_dim_constant,)
+
+        ## New user charging profile(ASAP)
+        reg_new_user_profile = np.zeros(self.var_dim_constant)
+        reg_new_user_profile[: self.Problem.N_asap - 1] = self.Problem.power_rate
+        reg_new_user_profile[self.Problem.N_asap - 1] = (self.Problem.power_rate * self.Problem.N_asap_remainder) if self.Problem.N_asap_remainder > 0 else self.Problem.power_rate
+
+        sch_agg = reg_power_sum_profile + np.sum(uk_flex.reshape(num_sch, self.var_dim_constant), axis=0)
+        reg_agg = reg_power_sum_profile + sch_power_sum_profile + reg_new_user_profile
 
         opt = {}
         opt['e_need'] = self.Problem.e_need
@@ -739,6 +741,9 @@ class Optimization_station:
         N_remain = int(self.Problem.user_duration)
         opt["flex_powers"] = uk_flex[: N_remain]
         self.Problem.powers = uk_flex[: N_remain]
+        # The power output of the aggregated power profile
+        opt["sch_agg"] = sch_agg
+        opt["reg_agg"] = reg_agg
 
         # For a possible "NEW" "ASAP" user, we assume that it's at the maximum for all ASAP intervals
         asap_powers = np.ones((self.Problem.N_asap, 1)) * self.Problem.station_pow_max
@@ -788,7 +793,7 @@ class Optimization_station:
         opt["par"] = self.Parameters
         opt["time_start"] = self.Problem.user_time
         opt["time_end_flex"] = self.Problem.user_time + self.Problem.user_duration
-        opt["time_end_asap"] = self.Problem.user_time + self.Problem.N_asap 
+        opt["time_end_asap"] = self.Problem.user_time + self.Problem.N_asap
         end = timeit.timeit()
 
         station = self.station # We update the station struct every round.
@@ -1208,6 +1213,8 @@ class Optimization_charger:
             asap_powers[self.Problem.N_asap - 1] = self.Problem.station_pow_max * self.Problem.N_asap_remainder
         self.asap_powers = asap_powers
         self.Problem.powers = uk_flex
+        opt["sch_agg"] = uk_flex
+        opt["reg_agg"] = asap_powers
         opt["asap_powers"] = asap_powers
         opt["v"] = vk
         opt["prob_flex"] = vk[0]
@@ -1233,45 +1240,4 @@ class Optimization_charger:
         opt["time_end_asap"] = self.Problem.user_time + self.Problem.N_asap
         end = timeit.timeit()
         return opt
-def save_look_up_tables(output_folder_name, reg_price, sch_price, sch_power):
-    """ Outputs 6 files """
-    
-    # check if outputs folder exists 
-    MYDIR = ("Outputs")
-    CHECK_FOLDER = os.path.isdir(MYDIR)
-
-    # If folder doesn't exist, then create it.
-    if not CHECK_FOLDER:
-        os.makedirs(MYDIR)
-        print("created folder : ", MYDIR)
-    
-    MYDIR = ("Outputs/Recent")
-    CHECK_FOLDER = os.path.isdir(MYDIR)
-
-    if not CHECK_FOLDER:
-        os.makedirs(MYDIR)
-        print("created folder : ", MYDIR)
-
-        reg_price.to_excel( os.path.join("Outputs/Recent","Regular_Prices.xlsx") )
-        sch_price.to_excel( os.path.join("Outputs/Recent","Scheduled_Prices.xlsx") )
-
-    # check if outputs folder exists 
-    MYDIR = (os.path.join("Outputs",output_folder_name))
-    CHECK_FOLDER = os.path.isdir(MYDIR)
-
-    # If folder doesn't exist, then create it.
-    if not CHECK_FOLDER:
-        os.makedirs(MYDIR)
-        print("created folder : ", MYDIR)
-        
-        reg_price.to_excel( os.path.join(MYDIR,"Regular_Prices.xlsx") )
-        sch_price.to_excel( os.path.join(MYDIR,"Scheduled_Prices.xlsx") )
-        sch_power.to_excel( os.path.join(MYDIR,"Scheduled_Powers.xlsx") )
-
-    elif CHECK_FOLDER:
-        print("already exists: ", MYDIR)
-        reg_price.to_excel( os.path.join(MYDIR,"Regular_Prices_1.xlsx") )
-        sch_price.to_excel( os.path.join(MYDIR,"Scheduled_Prices_1.xlsx") )
-        sch_power.to_excel( os.path.join(MYDIR,"Scheduled_Powers_1.xlsx") )
-
 
