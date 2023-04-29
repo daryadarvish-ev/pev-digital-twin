@@ -10,7 +10,7 @@ class SimulationLogger:
         self.user_data = pd.DataFrame(columns=['e_need', 'ASAP_Power', 'FLEX_power', 'flex_tarrif', 'asap_tarrif',
                                                'choice', 'station_power_profile'])
         self.station_power = pd.DataFrame(columns=['station_power'])
-        self.aggregate_metrics = pd.DataFrame(columns=['utility cost','carbon_emissions', 'revenue'])
+        self.aggregate_metrics = pd.DataFrame(columns=['isotime', 'utility cost','carbon_emissions', 'revenue'])
 
     def add_data(self, time, res):
         station_power_profile = res["sch_agg"] if res['choice'] == 'Scheduled' else res['reg_agg']
@@ -69,17 +69,23 @@ class SimulationLogger:
         starttime_datetime = start_of_today - datetime.timedelta(days=sim_length_days)
         starttime = starttime_datetime.isoformat()
         endtime = start_of_today.isoformat()
-        get_emissions(token, starttime, endtime)
+        emissions_df = get_emissions(token, starttime, endtime)
 
         for index, row in self.station_power.iterrows():
             hour_of_day = (int(index)%1440)/60
-            carbon_emissions = 0
+            index_datetime = starttime_datetime + datetime.timedelta(minutes=int(index))
+            endtime_datetime = index_datetime + datetime.timedelta(minutes=15)
+
+            # C02 Emissions (lbs) = power_kw * hr * 0.001mw/1kw *lbs/mwh
+            carbon_emissions = emissions_df[(emissions_df['point_time'] >= index_datetime.isoformat()) &
+                                            (emissions_df['point_time'] <= endtime_datetime.isoformat())]['value'].sum() * row['station_power'] * (15/60) * 0.001
+
             if 16 < hour_of_day < 21:
-                self.aggregate_metrics.loc[int(index)] = [TOU_OFF_PEAK * row['station_power'] * 15 / (60*100), carbon_emissions, 0]
+                self.aggregate_metrics.loc[int(index)] = [index_datetime, TOU_OFF_PEAK * row['station_power'] * 15 / (60*100), carbon_emissions, 0]
             elif 9 < hour_of_day < 14:
-                self.aggregate_metrics.loc[int(index)] = [TOU_4PM_9PM * row['station_power'] * 15 / (60*100), carbon_emissions, 0]
+                self.aggregate_metrics.loc[int(index)] = [index_datetime, TOU_4PM_9PM * row['station_power'] * 15 / (60*100), carbon_emissions, 0]
             else:
-                self.aggregate_metrics.loc[int(index)] = [TOU_9AM_2PM * row['station_power'] * 15 / (60*100), carbon_emissions, 0]
+                self.aggregate_metrics.loc[int(index)] = [index_datetime, TOU_9AM_2PM * row['station_power'] * 15 / (60*100), carbon_emissions, 0]
 
         # get revenue per user
         for index, row in self.user_data.iterrows():

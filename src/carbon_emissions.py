@@ -1,3 +1,4 @@
+import pandas as pd
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -15,7 +16,7 @@ def register_user():
 def login():
     login_url = 'https://api2.watttime.org/v2/login'
     rsp = requests.get(login_url, auth=HTTPBasicAuth('slrpev', 'slrpev-sim-2023'))
-    print(rsp.json())
+    print(rsp.text)
     return rsp.json()['token']
 
 
@@ -35,8 +36,7 @@ def get_emissions(token, starttime, endtime):
               'starttime': starttime,
               'endtime': endtime}
     rsp = requests.get(data_url, headers=headers, params=params)
-    print(rsp.text)
-    return rsp.json()
+    return pd.DataFrame(rsp.json())
 
 
 # register_user()
@@ -48,4 +48,4 @@ longitude = '-122.25'
 starttime = '2022-11-16T20:30:00-0800'
 endtime = '2022-11-16T20:45:00-0800'
 determine_grid_region(token, latitude, longitude)
-print(get_emissions(token, starttime, endtime))
+emissions_df = get_emissions(token, starttime, endtime)
