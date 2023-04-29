@@ -74,5 +74,3 @@ class SimulationLogger:
                 self.aggregate_metrics.at[index, 'revenue'] = row['flex_tarrif']
             elif choice == 'Regular':
                 self.aggregate_metrics.at[index, 'revenue'] = row['asap_tarrif']
-            else:
-                self.aggregate_metrics.at[index, 'revenue'] = 0
