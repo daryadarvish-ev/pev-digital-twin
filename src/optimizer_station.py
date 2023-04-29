@@ -712,7 +712,7 @@ class Optimization_station:
             for i in range(len(self.station['ASAP_list'])): # for all ASAP users
                 user = users[i]
                 TOU_idx = int(self.k / self.Parameters.Ts - user.user_time)
-                reg_power_sum_profile[: user.N_asap - TOU_idx] += user.powers[TOU_idx:].reshape(-1)
+                reg_power_sum_profile[:user.N_asap - TOU_idx] += user.powers[TOU_idx:user.N_asap].reshape(-1)
         # SCH
         num_sch = len(self.station["FLEX_list"]) + 1
         # Row: # of user, Col: Charging Profile
