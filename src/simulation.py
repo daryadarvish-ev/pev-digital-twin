@@ -28,7 +28,7 @@ class Simulator:
     This class hold the simulation ...
     """
 
-    def __init__(self, daily_sessions, total_day, input_df, input_real_df, number_of_pole, env):
+    def __init__(self, daily_sessions, total_day, input_df, input_real_df, number_of_pole):
 
         # SIMULATION PARAMETERS
         self.input_df = input_df
@@ -38,7 +38,6 @@ class Simulator:
         self.SIM_RUN_TIME = 1440 * self.NUM_DAYS
         self.CAR_ARR_TIME = 120
         self.CAR_STAY_TIME = 300
-        self.env = simpy.Environment()
         self.FLEX_user = list()
         self.ASAP_user = list()
         self.LEAVE_user = list()
