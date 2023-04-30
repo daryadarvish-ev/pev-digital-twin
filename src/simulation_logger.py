@@ -8,7 +8,7 @@ class SimulationLogger:
     def __init__(self):
         self.user_data = pd.DataFrame(columns=['arrival_time', 'e_need', 'ASAP_Power', 'FLEX_power', 'flex_tarrif', 'asap_tarrif',
                                                'choice', 'station_power_profile'])
-        self.station_power = pd.DataFrame(columns=['time', 'station_power'])
+        self.station_power = pd.DataFrame(columns=['station_power'])
         self.aggregate_metrics = pd.DataFrame(columns=['isotime', 'utility cost', 'carbon_emissions', 'revenue'])
         self.user_count = 0
 
@@ -21,7 +21,7 @@ class SimulationLogger:
         for index, row in self.user_data.iterrows():
             if row['choice'] != 'Leave':
                 for timestep in range(len(row['station_power_profile'])):
-                    self.station_power.loc[index] = [row['arrival_time'] + 15*timestep, row['station_power_profile'][timestep]]
+                    self.station_power.loc[row['arrival_time'] + 15*timestep] = row['station_power_profile'][timestep]
 
     def compute_aggregate_metrics(self):
         """Computes station carbon emissions, utility cost, and revenue.
@@ -52,8 +52,9 @@ class SimulationLogger:
         emissions_df = get_emissions(token, starttime, endtime)
 
         for index, row in self.station_power.iterrows():
-            hour_of_day = (row['time']%1440)/60
-            index_datetime = starttime_datetime + datetime.timedelta(minutes=row['time'])
+
+            hour_of_day = (index%1440)/60
+            index_datetime = starttime_datetime + datetime.timedelta(minutes=int(index))
             endtime_datetime = index_datetime + datetime.timedelta(minutes=15)
 
             # C02 Emissions (lbs) = power_kw * hr * 0.001mw/1kw *lbs/mwh
@@ -71,8 +72,8 @@ class SimulationLogger:
         for index, row in self.user_data.iterrows():
             choice = row['choice']
             if choice == 'Scheduled':
-                self.aggregate_metrics.at[index, 'revenue'] = row['flex_tarrif']
+                self.aggregate_metrics.at[row['arrival_time'], 'revenue'] = row['flex_tarrif']
             elif choice == 'Regular':
-                self.aggregate_metrics.at[index, 'revenue'] = row['asap_tarrif']
+                self.aggregate_metrics.at[row['arrival_time'], 'revenue'] = row['asap_tarrif']
             else:
-                self.aggregate_metrics.at[index, 'revenue'] = 0
+                self.aggregate_metrics.at[row['arrival_time'], 'revenue'] = 0
