@@ -159,26 +159,23 @@ class Simulator:
 
                     res['choice'] = choice
 
-                    # store historical values to the log info (energy needed, tariffs, power(soc))
-                    self.log.add_data(time, res)
-
                     self.user_choice_price['EV' + str(user_value)] = price
-                    print('This is this user_price dictionary: ', self.user_choice_price)
+                    print('This is the user_price dictionary: ', self.user_choice_price)
 
                     self.user_choice['EV' + str(user_value)] = choice
-                    print('This is this user_choice dictionary: ', self.user_choice)
+                    print('This is the user_choice dictionary: ', self.user_choice)
 
-                    ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
+                    # ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
 
                     print('station', self.station)
 
                     arrival_min_global = self.input_real_df['arrivalMinGlobal'][user_value - 1]
                     self.user_arrival_time['EV' + str(user_value)] = arrival_min_global
-                    print('This is this user_arrival dictionary: ', self.user_arrival_time)
+                    print('This is the user_arrival dictionary: ', self.user_arrival_time)
 
                     departure_min_global = self.input_real_df['departureMinGlobal'][user_value - 1]
                     self.user_departure_time['EV' + str(user_value)] = departure_min_global
-                    print('This is this user_departure dictionary: ', self.user_departure_time)
+                    print('This is the user_departure dictionary: ', self.user_departure_time)
 
                     pole_dict, occupied_pole_num = check_pole(arrival_min_global, departure_min_global, t_end, poles,
                                                               occupied_pole_num, pole_number=self.number_of_pole)
@@ -186,13 +183,18 @@ class Simulator:
                     self.pole_occupancy['EV' + str(user_value)] = occupied_pole_num[user_value - 1]
                     print('what is the pole occupancy dict', self.pole_occupancy)
 
+                    # store historical values to the log info (energy needed, tariffs, power(soc))
+                    self.log.add_data(time, res)
+
                     for key in self.pole_occupancy:
                         if self.pole_occupancy[key] == 'unavailability leave':
                             self.user_choice[key] = 'unavailability leave'
+                            self.log.user_data.at[int(key.split('EV')[1]), 'choice'] = 'Leave'
+                    print('This is the user_choice dictionary: ', self.user_choice)
 
                     e_needed = self.input_df['cumEnergy_kWh'][user_value - 1]
                     self.e_needed['EV' + str(user_value)] = e_needed
-                    print('This is this e_needed dictionary: ', self.e_needed)
+                    print('This is the e_needed dictionary: ', self.e_needed)
 
                     total_charging_revenue = anlz.total_revenue_calculate(self.user_choice_price,
                                                                           self.user_arrival_time,
@@ -231,10 +233,6 @@ class Simulator:
                     opt = Optimization_station(par, prb, self.station, arrival_hour)
                     res = opt.run_opt()
 
-                    # Driver choice based on the tariff
-                    choice, price = ev.basic_choice_function(asap_price, flex_price)
-                    print('This is choice:', choice)
-
                     # get flex and asap tarrif
                     flex_price = res['tariff_flex']
                     asap_price = res['tariff_asap']
@@ -245,22 +243,19 @@ class Simulator:
 
                     res['choice'] = choice
 
-                    # store historical values to the log info (energy needed, tariffs, power(soc))
-                    self.log.add_data(time, res)
-
                     self.user_choice_price['EV' + str(user_value)] = price
-                    print('This is this user_pirce dictionary: ', self.user_choice_price)
+                    print('This is the user_pirce dictionary: ', self.user_choice_price)
 
                     self.user_choice['EV' + str(user_value)] = (choice)
-                    print('This is this user_choice dictionary: ', self.user_choice)
+                    print('This is the user_choice dictionary: ', self.user_choice)
 
                     arrival_min_global = self.input_real_df['arrivalMinGlobal'][user_value - 1]
                     self.user_arrival_time['EV' + str(user_value)] = arrival_min_global
-                    print('This is this user_arrival dictionary: ', self.user_arrival_time)
+                    print('This is the user_arrival dictionary: ', self.user_arrival_time)
 
                     departure_min_global = self.input_real_df['departureMinGlobal'][user_value - 1]
                     self.user_departure_time['EV' + str(user_value)] = departure_min_global
-                    print('This is this user_departure dictionary: ', self.user_departure_time)
+                    print('This is the user_departure dictionary: ', self.user_departure_time)
 
                     pole_dict, occupied_pole_num = check_pole(arrival_min_global, departure_min_global, t_end, poles,
                                                               occupied_pole_num, pole_number=self.number_of_pole)
@@ -268,16 +263,22 @@ class Simulator:
                     self.pole_occupancy['EV' + str(user_value)] = occupied_pole_num[user_value - 1]
                     print('what is the pole occupancy dict', self.pole_occupancy)
 
+                    # store historical values to the log info (energy needed, tariffs, power(soc))
+                    self.log.add_data(time, res)
+
                     for key in self.pole_occupancy:
                         if self.pole_occupancy[key] == 'unavailability leave':
                             self.user_choice[key] = 'unavailability leave'
+                            self.log.user_data.at[int(key.split('EV')[1]), 'choice'] = 'Leave'
+                    print('This is the user_choice dictionary: ', self.user_choice)
+
 
                     # Print the energy needed of users
                     e_needed = self.input_df['cumEnergy_kWh'][user_value - 1]
                     self.e_needed['EV' + str(user_value)] = e_needed
-                    print('This is this e_needed dictionary: ', self.e_needed)
+                    print('This is the e_needed dictionary: ', self.e_needed)
 
-                    ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
+                    # ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
 
                     print('station', self.station)
 
