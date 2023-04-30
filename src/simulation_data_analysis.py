@@ -105,8 +105,24 @@ class data_analyze:
         plt.scatter(scheduled_arrival, scheduled_prices, label='Scheduled')
 
         # Set the x-axis and y-axis limits
-        plt.xlim(x_min-10, x_max+10)
-        plt.ylim(y_min-1, y_max+1)
+        plt.xlim(0, x_max + 50)
+        plt.ylim(y_min - 1, y_max + 1)
+
+        # Combine regular and scheduled data
+        time = regular_arrival + scheduled_arrival
+        price = regular_prices + scheduled_prices
+
+        # Create a list of tuples containing (arrival_time, price) pairs
+        data = list(zip(time, price))
+
+        # Sort the data by arrival time
+        data.sort(key=lambda x: x[0])
+
+        # Separate the sorted data into arrival times and prices
+        sorted_time, sorted_price = zip(*data)
+
+        # Create the line plot for prices using only the specified range of data
+        plt.plot(sorted_time, sorted_price, linestyle='-')
 
         # Add labels and legend to the plot
         plt.xlabel('Arrival Time (minutes)')

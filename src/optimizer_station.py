@@ -1025,7 +1025,12 @@ class Optimization_charger:
         delta_t = self.Parameters.Ts
         soft_v_eta = self.Parameters.soft_v_eta
 
-        if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
+        # if sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta):
+        #     raise ValueError('[ ERROR] invalid $v$')
+
+        try:
+            sum(v) < 0 | (np.sum(v) < 1 - self.Parameters.soft_v_eta) | (np.sum(v) > 1 + self.Parameters.soft_v_eta)
+        except:
             raise ValueError('[ ERROR] invalid $v$')
 
         ### Decision Variables

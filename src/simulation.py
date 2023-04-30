@@ -51,7 +51,7 @@ class Simulator:
         self.pole_occupancy = {}
         self.log = SimulationLogger()
 
-    def run_simulation(self, env, t_end):
+    def run_simulation(self, env, input_df, t_end):
 
         occupied_pole_num = []
         MM = range(t_end)

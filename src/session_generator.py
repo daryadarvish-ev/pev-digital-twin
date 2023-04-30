@@ -5,14 +5,63 @@ import random
 
 class SessionGen:
 
-    def __init__(self, daily_sessions, total_day, data_file, rnd_seeds=(150, 250, 350)):
+    def __init__(self, daily_sessions, total_day, data_file,season, day_type, rnd_seeds=(150, 250, 350)):
         self.sesession = daily_sessions
         self.total_day = total_day
-        self.ses = [daily_sessions * 3] * total_day
+        self.ses = [daily_sessions * 7] * total_day
         self.data = pd.read_csv(data_file, parse_dates=['connectTime', 'startChargeTime', 'Deadline', 'lastUpdate'])
         self.df = pd.DataFrame(columns=['arrivalDay','arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
         self.rnd_seeds = rnd_seeds
 
+        # Define the date ranges for each season
+        season_ranges = {
+            'Spring': [(2, 1), (5, 31)],
+            'Summer': [(6, 1), (8, 31)],
+            'Fall': [(9, 1), (12, 31)],
+            'Winter': [(1, 1), (1, 31)],
+            'All season': [[(12, 1), (12, 31)], [(1, 1), (2, 28)]]
+        }
+
+        # Define the days of the week
+        days_of_week = {
+            'Weekday': [0, 1, 2, 3, 4],
+            'Weekend': [5, 6],
+            'Week': [0, 6]
+        }
+
+        if (season != 'All season' and day_type != 'Week'):
+            # Filter the data based on the season and day type
+            season_range = season_ranges[season]
+            day_range = days_of_week[day_type]
+            filtered_data = self.filter_data(data_file, season_range, day_range)
+            self.data = filtered_data
+
+            self.df = pd.DataFrame(columns=['arrivalDay', 'arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
+            self.rnd_seeds = rnd_seeds
+        else:
+            self.data = pd.read_csv(data_file, parse_dates=['connectTime', 'startChargeTime', 'Deadline', 'lastUpdate'])
+            self.df = pd.DataFrame(columns=['arrivalDay', 'arrivalHour', 'arrivalMin', 'arrivalMinGlobal'])
+            self.rnd_seeds = rnd_seeds
+
+    def filter_data(self, data_file, season_range, day_range):
+        data = pd.read_csv(data_file, parse_dates=['connectTime', 'startChargeTime', 'Deadline', 'lastUpdate'])
+
+        # Filter the data based on the season and day type
+        filtered_data = data[
+            (data['connectTime'].dt.month >= season_range[0][0]) &
+            (data['connectTime'].dt.month <= season_range[-1][0]) &
+            (
+                    ((data['connectTime'].dt.month == season_range[0][0]) & (
+                            data['connectTime'].dt.day >= season_range[0][1])) |
+                    ((data['connectTime'].dt.month == season_range[-1][0]) & (
+                            data['connectTime'].dt.day <= season_range[-1][1])) |
+                    ((data['connectTime'].dt.month > season_range[0][0]) & (
+                            data['connectTime'].dt.month < season_range[-1][0]))
+            ) &
+            (data['connectTime'].dt.dayofweek.isin(day_range))
+            ]
+
+        return filtered_data
 
     def arrival_gen(self):
         self.data['arrivalMin'] = self.data['connectTime'].apply(lambda x: x.hour * 60 + x.minute)
