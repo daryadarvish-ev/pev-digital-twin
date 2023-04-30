@@ -165,7 +165,7 @@ class Simulator:
                     self.user_choice['EV' + str(user_value)] = choice
                     print('This is the user_choice dictionary: ', self.user_choice)
 
-                    # ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
+                    ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
 
                     print('station', self.station)
 
@@ -278,7 +278,7 @@ class Simulator:
                     self.e_needed['EV' + str(user_value)] = e_needed
                     print('This is the e_needed dictionary: ', self.e_needed)
 
-                    # ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
+                    ev.append_choice(choice, user_value, current_users, self.user_choice, price, self.station, opt)
 
                     print('station', self.station)
 
