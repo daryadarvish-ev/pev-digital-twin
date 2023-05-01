@@ -50,6 +50,7 @@ class Simulator:
         self.number_of_pole = number_of_pole
         self.pole_occupancy = {}
         self.log = SimulationLogger()
+        self.historical_data_sample_start_day = 1324
 
     def run_simulation(self, env, input_df, t_end):
 
@@ -69,10 +70,17 @@ class Simulator:
                     daily_sessions=self.DAILY_SESSIONS,
                     total_day=self.NUM_DAYS,
                     delta_t=delta_t, )
-        anlz = data_analyze(self.user_choice,
-                            self.user_choice_price,
-                            self.user_arrival_time,
-                            self.user_departure_time)
+        # anlz = data_analyze(self.user_choice,
+        #                     self.user_choice_price,
+        #                     self.user_arrival_time,
+        #                     self.user_departure_time)
+        anlz = Station.data_analyze(self.user_choice,
+                                    self.user_choice_price,
+                                    self.user_arrival_time,
+                                    self.user_departure_time)
+        usr_behv_model, asap_quant, flex_quant = anlz.usr_behavior_clf(data_path='../data/Sessions2_20221020.csv',
+                                               analysis_start=self.historical_data_sample_start_day)
+        user_choice = ev.UserBehavior(usr_behv_model, asap_quant, flex_quant)
         # Start the simulation loop
         while True:
 
@@ -154,7 +162,7 @@ class Simulator:
                     asap_price = res['tariff_asap']
 
                     # Driver choice based on the tariff
-                    choice, price = ev.basic_choice_function(asap_price, flex_price)
+                    choice, price = user_choice.basic_choice_function(asap_price, flex_price)
                     print('This is choice:', choice)
 
                     res['choice'] = choice
@@ -238,7 +246,7 @@ class Simulator:
                     asap_price = res['tariff_asap']
 
                     # Driver choice based on the tariff
-                    choice, price = ev.basic_choice_function(asap_price, flex_price)
+                    choice, price = user_choice.basic_choice_function(asap_price, flex_price)
                     print('This is choice:', choice)
 
                     res['choice'] = choice

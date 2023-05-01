@@ -117,8 +117,24 @@ class Station:
             plt.scatter(scheduled_arrival, scheduled_prices, label='Scheduled')
 
             # Set the x-axis and y-axis limits
-            plt.xlim(x_min - 10, x_max + 10)
+            plt.xlim(0, x_max + 50)
             plt.ylim(y_min - 1, y_max + 1)
+
+            # Combine regular and scheduled data
+            time = regular_arrival + scheduled_arrival
+            price = regular_prices + scheduled_prices
+
+            # Create a list of tuples containing (arrival_time, price) pairs
+            data = list(zip(time, price))
+
+            # Sort the data by arrival time
+            data.sort(key=lambda x: x[0])
+
+            # Separate the sorted data into arrival times and prices
+            sorted_time, sorted_price = zip(*data)
+
+            # Create the line plot for prices using only the specified range of data
+            plt.plot(sorted_time, sorted_price, linestyle='-')
 
             # Add labels and legend to the plot
             plt.xlabel('Arrival Time (minutes)')
@@ -128,7 +144,28 @@ class Station:
             # Show the plot
             plt.show()
 
-        def usr_behavior_clf(self, data_path, analysis_start=1324):
+        def revenue_calculate(self, price, energy, duration):
+            revenue = (price * 0.01) * energy
+            return revenue
+
+        def total_revenue_calculate(self, price_dict, arr_dict, dep_dict, e_needed_dict, user_choice_dict):
+            total_revenue = 0
+            for key in user_choice_dict.keys():
+                if user_choice_dict[key] == 'Regular' or user_choice_dict[key] == 'Scheduled':
+                    price = price_dict[key]
+                    energy = e_needed_dict[key]
+                    duration = dep_dict[key] - arr_dict[key]
+                    total_revenue += self.revenue_calculate(price, energy, duration)
+            return total_revenue
+
+        def usr_behavior_clf(self, data_path, analysis_start):
+            """
+            This function takes in the path to the data file and the row number to start the analysis.
+            It then cleans the data, trains a classifier, and returns the best model.
+            :param data_path: Path to the data file
+            :param analysis_start: Row number to start the analysis
+            :return: Best performing model
+            """
             data = pd.read_csv(data_path)
             # Data after 1324th row is more stable and closer to current situation
             X = data[['vehicle_model',
@@ -149,6 +186,9 @@ class Station:
             X['vehicle_model'] = X['vehicle_model'].astype('category').cat.codes
             # Convert 'startChargeTime' column to datetime
             X['startChargeTime'] = pd.to_datetime(X['startChargeTime'])
+
+            # Extract the weekday from 'startChargeTime' and add it as a new column
+            X['weekday'] = X['startChargeTime'].dt.dayofweek
             # Convert 'startChargeTime' column to timestamp
             X['startChargeTime'] = X['startChargeTime'].apply(lambda x: x.timestamp())
             # Split the data into features (X) and labels (y)
@@ -175,15 +215,23 @@ class Station:
 
             # Train and evaluate each classifier
             accuracies = {}
+            best_accuracy = 0
+            best_model = None
+            best_name = ''
             for name, clf in classifiers.items():
                 clf.fit(X_train, y_train)
                 y_pred = clf.predict(X_test)
                 accuracy = accuracy_score(y_test, y_pred)
                 accuracies[name] = accuracy
-                print(f"{name}:")
-                print(f"  Accuracy: {accuracy:.2f}")
-                print("  Classification Report:")
-                print(classification_report(y_test, y_pred))
+                # print(f"{name}:")
+                # print(f"  Accuracy: {accuracy:.2f}")
+                # print("  Classification Report:")
+                # print(classification_report(y_test, y_pred))
+                if accuracy > best_accuracy:
+                    best_accuracy = accuracy
+                    best_model = clf
+                    best_name = name
+            print(f"Best model: {best_name}")
 
             # Visualize classifier accuracies
             plt.figure(figsize=(10, 6))
@@ -194,3 +242,18 @@ class Station:
             plt.show()
             # for i in range(len(y_pred)):
             #     print(y_pred[i], y_test.reset_index(drop=True)[i])
+            # Calculate the quantiles and return them
+            # /10 is just a temporary fix to make the numbers more readable
+            reg_quantiles = np.quantile(X['reg_centsPerHr']/10, [0.25, 0.5, 0.75])
+            sch_quantiles = np.quantile(X['sch_centsPerHr']/10, [0.25, 0.5, 0.75])
+
+            return best_model, reg_quantiles, sch_quantiles
+
+        def predict_user_choice(self, model, user_data):
+            user_data = np.array(user_data).reshape(1, -1)
+            prediction = model.predict(user_data)
+            return 'REGULAR' if prediction == 0 else 'SCHEDULE'
+
+
+
+

@@ -2,6 +2,7 @@ import random
 import simpy
 import numpy as np
 import pandas as pd
+from state_info import Station
 
 import warnings
 
@@ -106,16 +107,68 @@ class Driver:
             }
             return event
 
-    # Behavior model
-    def basic_choice_function(self, asap_price, flex_price):
-        """Basic choice function which chooses the lowest price"""
+        def charging_evaluation(self, arrival_hour, duration_hour, desired_energy):
+            """
+            Evaluate the charging process for each session.
+            :param arrival_hour: Arrival hour of the session.
+            :param duration_hour: Duration of the session.
+            :param actual_energy_delivered: Actual energy delivered to the session.
+            :param desired_energy: Desired energy of the session.
+            :return: Charging evaluation of the session.
+            """
+            # Calculate the actual energy delivered
+            actual_energy_delivered = 0
+            for i in range(int(duration_hour * 4)):
+                actual_energy_delivered += self.delta_t * self.user_power_rate
+            # Calculate the charging evaluation
 
-        if random.uniform(0, 1) > 0.9:
-            return "Leave", 9999
-        if asap_price > flex_price:
-            return "Scheduled", flex_price
-        else:
-            return "Regular", asap_price
+
+    # Behavior model
+    class UserBehavior:
+        def __init__(self, model, asap_quantiles, flex_quantiles):
+            self.model = model
+            self.asap_quantiles = asap_quantiles
+            self.flex_quantiles = flex_quantiles
+
+        def random_leave(self, asap_price, flex_price):
+            """Create a function to randomly assign the user to take a new option 'Leave'"""
+            # if min(asap_price, flex_price) < min(self.asap_quantiles[0.25], self.flex_quantiles[0.25]):
+            if min(asap_price, flex_price) < 21:
+                leave_probability = 0.05
+            # elif min(asap_price, flex_price) < min(self.asap_quantiles[0.50], self.flex_quantiles[0.50]):
+            elif min(asap_price, flex_price) < 22:
+                leave_probability = 0.075
+            # elif min(asap_price, flex_price) < min(self.asap_quantiles[0.75], self.flex_quantiles[0.75]):
+            elif min(asap_price, flex_price) < 24:
+                leave_probability = 0.1
+            else:
+                leave_probability = 0.125
+
+            leave = np.random.poisson(leave_probability)
+            return 'Leave' if leave > 0 else None
+
+        def basic_choice_function(self, asap_price, flex_price):
+            """Basic choice function which chooses the lowest price"""
+
+            if self.random_leave(asap_price, flex_price) == 'Leave':
+                return "Leave", 9999
+            # if random.uniform(0, 1) > 0.9:
+            #     return "Leave", 9999
+            elif asap_price > flex_price:
+                return "Scheduled", flex_price
+            else:
+                return "Regular", asap_price
+
+        def basic_choice_function_ml(self, asap_price, flex_price, model):
+            """Basic choice function which chooses the lowest price with Machine Learning models"""
+
+            if self.random_leave(asap_price, flex_price) == 'Leave':
+                return "Leave", 9999
+            # elif Station.data_analyze.predict_user_choice(model, asap_price, flex_price) == 'Leave':
+            elif asap_price > flex_price:
+                return "Scheduled", flex_price
+            else:
+                return "Regular", asap_price
 
     def append_choice(self, choice, new_user, current_user, user_choice, price, station, opt):
         FLEX_user = list()  # reset the user lists
